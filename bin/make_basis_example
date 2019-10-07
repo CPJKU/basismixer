@@ -1,0 +1,38 @@
+#!/usr/bin/env python
+
+import argparse
+import json
+import logging
+
+import partitura
+import basismixer.basisfunctions
+
+def main():
+    parser = argparse.ArgumentParser(description="Create basis functions for one or more MusicXML files")
+    parser.add_argument("basisconfig", help="JSON file specifying a set of basis functions for each expressive target")
+    parser.add_argument("musicxml", help="MusicXML file(s)", nargs='+')
+    args = parser.parse_args()
+    basis_config = json.load(open(args.basisconfig))
+
+    global_i_map = {}
+    for musicxml in args.musicxml:
+
+        part = partitura.load_musicxml(musicxml)
+
+        if not isinstance(part, partitura.score.Part):
+            print('No score parts found for {}'.format(musicxml))
+
+        basis, names, idx = basismixer.basisfunctions.make_basis(part, basis_config)
+
+        # grow a global dictionary of indices for each basis function
+        for trg, tidx in idx.items():
+            gtidx = [global_i_map.setdefault(names[i], len(global_i_map))
+                     for i in tidx]
+            print(trg, gtidx)
+
+    for k, v in global_i_map.items():
+        print(k, v)
+
+
+if __name__ == '__main__':
+    main()

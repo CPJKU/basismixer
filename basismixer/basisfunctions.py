@@ -4,7 +4,7 @@ import sys
 from collections import defaultdict
 import numpy as np
 
-def make_basis(score_part, basis_config):
+def make_basis(part, basis_config):
     # targets = basis_config.keys()
     names = list(set(basis for basis_list in basis_config.values()
                      for basis in basis_list))
@@ -12,7 +12,7 @@ def make_basis(score_part, basis_config):
     cs = 0
     for name in names:
         func = getattr(sys.modules[__name__], name)
-        bf, bn = func(score_part)
+        bf, bn = func(part)
         acc.append((bf, bn, cs))
         cs += len(bn)
         
@@ -29,8 +29,8 @@ def make_basis(score_part, basis_config):
     return basis_data, basis_names, target_basis_idx # 
 
 
-def odd_even_basis(score_part):
-    N = len(score_part.notes)
+def odd_even_basis(part):
+    N = len(part.notes)
     W = np.ones(N)
     if N % 2 == 0:
         basis_names = ['even']
@@ -38,26 +38,26 @@ def odd_even_basis(score_part):
         basis_names = ['odd']
     return W, basis_names
 
-def polynomial_pitch_basis(score_part):
+def polynomial_pitch_basis(part):
 
     basis_names = ['pitch', 'pitch^2', 'pitch^3']
 
-    pitches = np.array([n.midi_pitch for n in score_part.notes]).astype(np.float)
+    pitches = np.array([n.midi_pitch for n in part.notes]).astype(np.float)
     W = np.column_stack((pitches/127,
                          pitches**2/127**2,
                          pitches**3/127**3))
     
     return normalize(W), basis_names
 
-def duration_basis(score_part):
+def duration_basis(part):
 
     basis_names = ['duration']
 
-    nd = np.array([(n.start.t, n.end.t) for n in score_part.notes])
-    bm = score_part.beat_map
+    nd = np.array([(n.start.t, n.end.t) for n in part.notes])
+    bm = part.beat_map
 
-    note_times_beat = bm(nd[:, 1]) - bm(nd[:, 0])
-    W = note_times_beat
+    durations_beat = bm(nd[:, 1]) - bm(nd[:, 0])
+    W = durations_beat
     W.shape = (-1, 1)
     return normalize(W, 'tanh_unity'), basis_names
 

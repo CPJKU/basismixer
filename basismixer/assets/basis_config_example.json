@@ -1,0 +1,11 @@
+{
+  "velocity_trend": [
+    "polynomial_pitch_basis",
+    "odd_even_basis"
+  ],
+  "ibi": [
+    "polynomial_pitch_basis",
+    "odd_even_basis",    
+    "duration_basis"
+    ]
+}
