@@ -10,7 +10,7 @@ from setuptools import find_packages, setup, Command
 
 # Package meta-data.
 NAME = 'basismixer'
-DESCRIPTION = 'A package for handling symbolic musical information'
+DESCRIPTION = 'A framework for computational modeling of musical expression'
 KEYWORDS = 'music'
 URL = 'https://github.com/OFAI/basismixer'
 EMAIL = ''
