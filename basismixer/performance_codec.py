@@ -11,19 +11,9 @@ import logging
 from scipy.interpolate import interp1d
 from scipy.misc import derivative
 
+from basismixer.utils import clip
 
 LOGGER = logging.getLogger(__name__)
-
-
-def restrict_to_uint8(values, name=''):
-    too_low_values = np.where(values < 1)[0]
-    if len(too_low_values) > 0:
-        LOGGER.warning('Setting {0} values < 1 to 1'.format(name))
-        values[too_low_values] = 1
-    too_high_values = np.where(values > 127)[0]
-    if len(too_high_values) > 0:
-        LOGGER.warning('Setting {0} values > 127 to 127'.format(name))
-        values[too_high_values] = 127
 
 
 class PerformanceCodec(object):
@@ -72,7 +62,7 @@ class PerformanceCodec(object):
 
         pitches = score['pitch']
 
-        restrict_to_uint8(pitches, 'pitch')
+        clip(pitches, 1, 127)
 
         time_params = parameters[:, len(self.dynamics_codec.parameter_names):]
 
@@ -90,7 +80,7 @@ class PerformanceCodec(object):
             score_durations=score['duration'],
             parameters=dynamics_params)
 
-        restrict_to_uint8(velocities, 'velocity')
+        clip(velocities, 1, 127)
 
         matched_performance = np.array(
             [(n['pitch'], n['onset'], n['duration'], v, od[0], od[1])
@@ -102,7 +92,7 @@ class PerformanceCodec(object):
                    ('p_onset', 'f4'),
                    ('p_duration', 'f4')])
 
-        # TODO
+        # TODO (outside of this function)
         # * Sanitize
         # * Export MIDI
 
@@ -152,6 +142,8 @@ class TimeCodec(object):
                                     'log_articulation')
         elif isinstance(parameter_names, (list, tuple)):
             self.parameter_names = parameter_names
+        else:
+            raise Exception('Unknown parameter names specification: {}'.format(parameter_names))
 
         self.tempo_fun = tempo_fun
 
@@ -172,6 +164,13 @@ class TimeCodec(object):
         score = np.column_stack((score_onsets, score_durations))
         performance = np.column_stack((performed_onsets, performed_durations))
 
+
+        # WIP: this line should replace the whole segmentation business but
+        # needs checking:
+        result = self._encode(score, performance, return_u_onset_idx)
+        # TODO: compute mbp
+
+        # TODO: get rid of the stuff below
         idx, br = segment_score_perf_times(np.column_stack((score_onsets, performed_onsets)))
 
         score_segs = np.split(score[idx], br)
@@ -642,159 +641,3 @@ def get_unique_seq(onsets, offsets, unique_onset_idxs=None,
 
     return output_dict
 
-
-def segment_score_perf_times(score_perf_onsets):
-    """
-    Segment a list of pairs (score onset, performance onset), based on the
-    euclidean distance between (chronological) subsequent pairs.
-
-    Parameters
-    ----------
-
-    score_perf_onsets : ndarray
-        ndarray of shape N x 2, conveying N pairs of score and performance
-        onsets, respectively
-
-    Returns
-    -------
-
-    sort_idx : ndarray
-        Index that sorts `score_performance_onsets` correctly for segmentation
-
-    breakpoints: list
-        Indices of segment start elements in
-        `score_performance_onsets[sort_idx]`. The index of the first segment
-        (0) is not included.
-    """
-
-    assert len(score_perf_onsets) > 0
-    y = score_perf_onsets[:, :]
-
-    # y is sorted according to increasing score onsets; within score onsets, y
-    # is sorted according to increasing performance onsets:
-
-    # secondary sort: performance time
-    i1 = np.argsort(y[:, 1])
-    # primary sort: score time
-    i2 = np.argsort(y[i1, 0], kind='mergesort')
-    sort_idx = i1[i2]
-    y = y[sort_idx, :]
-
-    # quantize score onsets to determine unique score onsets
-    uox = get_unique_onset_idxs((y[:, 0] * 10000).astype(np.int))
-
-    u_onset_score = np.array([np.mean(y[x, 0]) for x in uox])
-    u_onset_perf = np.array([np.mean(y[x, 1]) for x in uox])
-
-    # version of y that contains unique score/perf onsets
-    y_u = np.column_stack((u_onset_score, u_onset_perf))
-
-    # rescale score and performance times to [0,1], to compute
-    # euclidean distance
-    y_u -= np.min(y_u, axis=0)
-    y_u /= np.max(y_u, axis=0)
-
-    diff_u = np.diff(y_u, axis=0)
-    dist_u = np.sum(diff_u ** 2, axis=1) ** .5
-
-    med_d = np.median(dist_u)
-    max_d = np.max(dist_u)
-    max_med_ratio = max_d / med_d
-
-    # segment the performance if max distance between adjacent points is more
-    # than max_ratio times larger than the median:
-    max_ratio = 10
-    do_segment = max_med_ratio > max_ratio
-
-    # minimal size of a segment. If the segmentation yields segments smaller
-    # than min_seg_length, no segmentation will be applied
-    min_seg_length = 3
-
-    if do_segment:
-        breakpoints_u = find_segment_boundaries(dist_u)
-        if np.any(np.diff(np.r_[0, breakpoints_u, len(dist_u)]) < min_seg_length):
-            breakpoints = []
-        else:
-            breakpoints = np.searchsorted(y[:, 0], u_onset_score[breakpoints_u], side='right')
-    else:
-        breakpoints = []
-
-    return sort_idx, breakpoints
-
-
-def find_segment_boundaries(dist, max_from_best=10):
-    """
-    Determine segment boundaries by segmenting using a greedy search
-    (segmenting at the largest gaps first). The loss of the segmentation
-    is measured by the ratio (max dist within segments) / (min dist at 
-    segment boundaries).
-
-    Parameters
-    ----------
-
-    dist : ndarray
-        Array of euclidean distance values
-
-    max_from_best : int
-        Stop the search if the best loss value was observed more than
-        `max_from_best` candidates ago (and return the best segmentation
-        up to that point)
-
-    Returns
-    -------
-
-    ndarray
-        Array of segmentation boundaries (start index of each segment, 
-        excluding 0)
-
-    """
-    sidx = np.argsort(dist)[::-1]
-    bp = []
-    best_loss = eval_segments(dist, bp)
-    best_i = 0
-    since_best = 0
-    for i in range(len(sidx)):
-        loss = eval_segments(dist, sorted(sidx[:i + 1]))
-        if loss < best_loss:
-            best_loss = loss
-            best_i = i
-        else:
-            since_best += 1
-        if since_best > max_from_best:
-            break
-    return sorted(sidx[:best_i + 1])
-
-
-def eval_segments(dist, bp):
-    """
-    Compute the ratio (max dist within segments) / (min dist at segment
-    boundaries). If there is only one segment, return the maximal within segment
-    distance.
-
-    Parameters
-    ----------
-
-    dist : ndarray
-        Array of euclidean distance values
-
-    bp : ndarray
-        Array of segmentation boundaries (start index of each segment,
-        excluding 0).
-
-    Returns
-    -------
-
-    float
-        Loss value (lower means better segmentation)
-    """
-
-    N = len(dist)
-    idx = np.zeros(N, np.bool)
-    idx[bp] = True
-    if len(bp) == 0:
-        within_dist = np.max(dist[~idx])
-        return within_dist
-    else:
-        within_dist = np.max(dist[~idx])
-        between_dist = np.min(dist[idx])
-        return within_dist / between_dist

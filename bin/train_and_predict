@@ -2,11 +2,12 @@
 
 import numpy as np
 import argparse
+from basismixer import PerformanceCodec, make_basis
 
 def pseudo_code():
     basis_config # dictionary
     model_config # dictionary
-    target_codec = TargetCodec()
+    pcodec = PerformanceCodec()
 
     train_X = []
     train_Y = []
@@ -23,7 +24,7 @@ def pseudo_code():
         notes = extract_note_attributes(performance_part, note_idx)
 
         basis = make_basis(part, snote_idx)
-        targets = target_codec.encode(snotes, notes)
+        targets = pcodec.encode(snotes, notes)
 
         train_X.append(basis)
         train_Y.append(targets)
@@ -36,8 +37,8 @@ def pseudo_code():
         basis = make_basis(part, None)
         snotes = extract_snote_attributes(part, None)
         predicted_targets = model.predict(basis)
-        predicted_performance_part = target_codec.decode(snotes, predicted_targets)
+        predicted_performance_part = pcodec.decode(snotes, predicted_targets)
 
     
 if __name__ == '__main__':
-    pass
+    main()
