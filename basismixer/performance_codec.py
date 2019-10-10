@@ -33,6 +33,7 @@ class PerformanceCodec(object):
 
     def encode(self, matched_score, return_u_onset_idx=False):
 
+        # Get time-related parameters
         (time_params, mean_beat_period,
          unique_onset_idxs) = self.time_codec.encode(
             score_onsets=matched_score['onset'],
@@ -41,6 +42,7 @@ class PerformanceCodec(object):
             performed_durations=matched_score['p_duration'],
             return_u_onset_idx=True)
 
+        # Get dynamics-related parameters
         dynamics_params = self.dynamics_codec.encode(
             pitches=matched_score['pitch'],
             velocities=matched_score['velocity'],
@@ -48,6 +50,7 @@ class PerformanceCodec(object):
             score_durations=matched_score['duration'],
             unique_onset_idxs=unique_onset_idxs)
 
+        # Concatenate parameters into a single matrix
         parameters = np.column_stack((dynamics_params, time_params))
 
         output = [parameters, mean_beat_period]
@@ -64,9 +67,9 @@ class PerformanceCodec(object):
 
         clip(pitches, 1, 127)
 
-        time_params = parameters[:, len(self.dynamics_codec.parameter_names):]
-
         dynamics_params = parameters[:, :len(self.dynamics_codec.parameter_names)]
+
+        time_params = parameters[:, len(self.dynamics_codec.parameter_names):]
 
         onsets_durations = self.time_codec.decode(
             score_onsets=score['onset'],
@@ -121,6 +124,13 @@ class NotewiseDynamicsCodec(object):
             return np.round(parameters)
 
 
+class OnsetwiseDecompositionDynamicsCodec(object):
+    """
+    Performance Codec for encoding and decoding dynamics related
+    expressive dimensions
+    """
+
+
 class TimeCodec(object):
     """
     Performance Codec for encoding and decoding time related expressive
@@ -163,7 +173,6 @@ class TimeCodec(object):
         performed_durations = performed_durations.astype(np.float64, copy=False)
         score = np.column_stack((score_onsets, score_durations))
         performance = np.column_stack((performed_onsets, performed_durations))
-
 
         # WIP: this line should replace the whole segmentation business but
         # needs checking:
@@ -640,4 +649,3 @@ def get_unique_seq(onsets, offsets, unique_onset_idxs=None,
         output_dict['diff_u_onset'] = np.diff(u_onset)
 
     return output_dict
-
