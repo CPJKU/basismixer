@@ -2,6 +2,7 @@
 
 import numpy as np
 
+
 def pair_files(dir_dict, remove_incomplete=True):
     """Pair files in directories; dir_dict is of form (label: directory)
 
@@ -18,7 +19,7 @@ def pair_files(dir_dict, remove_incomplete=True):
     -------
     type
         Description of return value
-    
+
     """
     result = defaultdict(dict)
     for label, directory in dir_dict.items():
@@ -61,3 +62,13 @@ def clip(v, low=0, high=127):
         # LOGGER.warning('Clipping {} high values'.format(too_high))
         v[too_high] = high
 
+
+def extract_matched_performance(score_part, performed_part,
+                                snote_idx, note_idx):
+
+    score_array = score_part.note_array
+
+    perf_array = performed_part.note_array
+
+    score_info = score_array[snote_idx]
+    perf_info = perf_array[note_idx]
