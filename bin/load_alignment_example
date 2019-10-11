@@ -1,0 +1,41 @@
+#!/usr/bin/env python
+
+import argparse
+import json
+import logging
+
+import partitura
+import basismixer.basisfunctions
+from basismixer.utils import pair_files
+
+def main():
+    parser = argparse.ArgumentParser(description="Extract match information for performance codec")
+    # parser.add_argument("xmlfolder", help="Folder with MusicXML files")
+    parser.add_argument("matchfolder", help="Folder with match files")
+    args = parser.parse_args()
+
+    folders = dict(match=args.matchfolder)
+
+    for piece, files in pair_files(folders).items():
+
+        # part = partitura.load_musicxml(files['xml'])
+        part, ppart, alignment = partitura.load_match(files['match'])
+
+        part_by_id = dict((n.id, n) for n in part.notes_tied)
+        ppart_by_id = dict((n['id'], n) for n in ppart.notes)
+
+        # pair matched score and performance notes
+        notes = [(part_by_id[a['score_id']],
+                  ppart_by_id[a['performance_id']])
+                 for a in alignment if a['label'] == 'match']
+
+        for sn, n in notes:
+            print(sn, n)
+
+        break
+
+    return
+
+
+if __name__ == '__main__':
+    main()
