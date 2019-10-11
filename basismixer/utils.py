@@ -1,8 +1,11 @@
 #!/usr/bin/env python
 
+import os
+from collections import defaultdict
+
 import numpy as np
 
-def pair_files(dir_dict, remove_incomplete=True):
+def pair_files(dir_dict, remove_incomplete=True, full_path=True):
     """Pair files in directories; dir_dict is of form (label: directory)
 
     TODO: complete docs below:
@@ -23,14 +26,20 @@ def pair_files(dir_dict, remove_incomplete=True):
     result = defaultdict(dict)
     for label, directory in dir_dict.items():
         for f in os.listdir(directory):
-            name = os.path.splitext(f)[0]
-            result[name][label] = f
+            path = os.path.join(directory, f)
+            if os.path.isfile(path):
+                name = os.path.splitext(f)[0]
+                if full_path:
+                    result[name][label] = path
+                else:
+                    result[name][label] = f
 
     if remove_incomplete:
-        labels = dir_dict.keys()
-        for k in result.keys():
-            if not all([y in result[k] for y in labels]):
-                del result[k]
+        labels = set(dir_dict.keys())
+        todo_delete = [k for k, k_labels in result.items()
+                       if not set(k_labels) == labels]
+        for k in todo_delete:
+            del result[k]
 
     return result
 

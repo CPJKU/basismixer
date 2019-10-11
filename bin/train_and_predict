@@ -2,15 +2,19 @@
 
 import numpy as np
 import argparse
-from basismixer import PerformanceCodec, make_basis
+import json
 
-def pseudo_code():
-    basis_config # dictionary
-    model_config # dictionary
+from basismixer import PerformanceCodec, make_basis, BASIS_CONFIG_EXAMPLE
+
+def main():
+
+    basis_config = json.load(open(BASIS_CONFIG_EXAMPLE)) # dictionary
+    # model_config # dictionary
     pcodec = PerformanceCodec()
 
     train_X = []
     train_Y = []
+    train_pieces
     for xml_fn, match_fn in train_pieces:
 
         part = load_musicxml(xml_fn)
