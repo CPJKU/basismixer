@@ -10,9 +10,9 @@
 
 ## For Tutorial
 
-- (all) Simple framework for defining new basis functions
+- (mg) Simple framework for defining new basis functions
 - (silvan) Render MIDI in browser
 - (cc) Start Jupyter notebook
 - (cc) Double check Vienna 4x22
-  - Correct Mozart K331 (one score corrected)
+  - [done] (mg) Correct Mozart K331 (one score corrected)
 
