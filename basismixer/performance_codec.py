@@ -498,17 +498,14 @@ def monotonize_times(s, strict=True, deltas=None, return_interp_seq=False):
     the bounds of `s`.
 
     Parameters
-    ==========
-
+    ----------
     s : ndarray
         a sequence of numbers
-
     strict : bool
         when True, return a strictly monotonic sequence (default: True)
 
     Returns
-    =======
-
+    -------
     ndarray
        a monotonic sequence that has been linearly interpolated using a subset of s
 
