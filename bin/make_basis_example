@@ -3,18 +3,31 @@
 import argparse
 import json
 import logging
+import numpy as np
+
+import torch
 
 import partitura
-import basismixer.basisfunctions
+
+import basismixer
+from basismixer.utils import to_memmap
+import basismixer.basisfunctions as bf
 
 def main():
     parser = argparse.ArgumentParser(description="Create basis functions for one or more MusicXML files")
-    parser.add_argument("basisconfig", help="JSON file specifying a set of basis functions for each expressive target")
     parser.add_argument("musicxml", help="MusicXML file(s)", nargs='+')
+    parser.add_argument("--cachefolder", type=str, help='Cache folder')
+    parser.add_argument("--basisconfig", type=str,
+                        help=("JSON file specifying a set of basis functions for each expressive target. "
+                              "If not specified a default configuration will be used."))
     args = parser.parse_args()
-    basis_config = json.load(open(args.basisconfig))
+    bcfg = args.basisconfig or basismixer.BASIS_CONFIG_EXAMPLE
+    basis_config = json.load(open(bcfg))
+    basis_names = list(set(i for ii in basis_config.values() for i in ii))
+    
+    idx_map = {}
+    basis_data = []
 
-    global_i_map = {}
     for musicxml in args.musicxml:
 
         part = partitura.load_musicxml(musicxml)
@@ -22,16 +35,41 @@ def main():
         if not isinstance(part, partitura.score.Part):
             print('No score parts found for {}'.format(musicxml))
 
-        basis, names, idx = basismixer.basisfunctions.make_basis(part, basis_config)
+        basis, names = bf.make_basis(part, basis_names)
+        # to move the array to disk and load as a memmap, do:
+        # basis = to_memmap(basis, args.cachefolder)
 
-        # grow a global dictionary of indices for each basis function
-        for trg, tidx in idx.items():
-            gtidx = [global_i_map.setdefault(names[i], len(global_i_map))
-                     for i in tidx]
-            print(trg, gtidx)
+        idx = np.array([idx_map.setdefault(name, len(idx_map))
+                        for i, name in enumerate(names)])
 
-    for k, v in global_i_map.items():
-        print(k, v)
+        basis_data.append((basis, idx))
+
+
+    N = len(idx_map)
+
+    _datasets = []
+    for basis, idx in basis_data:
+        _datasets.append(BasisMixerDataSet(basis, idx, N))
+
+    dataset = torch.utils.data.ConcatDataset(_datasets)
+
+    # map names to index:
+    # inv_idx_map = dict((v,k) for k, v in idx_map.items())
+    
+
+class BasisMixerDataSet(torch.utils.data.Dataset):
+    def __init__(self, basis, idx, n_basis):
+        self.basis = basis
+        self.idx = idx
+        self.n_basis = n_basis
+        
+    def __getitem__(self, i):
+        v = np.zeros(self.n_basis)
+        v[self.idx] = self.basis[i]
+        return v
+
+    def __len__(self):
+        return len(self.basis)
 
 
 if __name__ == '__main__':

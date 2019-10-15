@@ -4,15 +4,14 @@ import sys
 from collections import defaultdict
 import numpy as np
 
-def make_basis(part, basis_config):
-    # targets = basis_config.keys()
-    names = list(set(basis for basis_list in basis_config.values()
-                     for basis in basis_list))
+def make_basis(part, names):
     acc = []
     cs = 0
     for name in names:
+        # get function by name from module
         func = getattr(sys.modules[__name__], name)
         bf, bn = func(part)
+        # TODO: check that size of bf matches part.notes_tied
         acc.append((bf, bn, cs))
         cs += len(bn)
         
@@ -20,13 +19,32 @@ def make_basis(part, basis_config):
     basis_data = np.column_stack(_data)
     basis_names = [n for ns in _names for n in ns]
 
-    target_basis_idx = defaultdict(list)
-    for target, t_names in basis_config.items():
-        for bf, bn, offset in zip(names, _names, _offsets):
-            if bf in t_names:
-                target_basis_idx[target].extend(range(offset, offset+len(bn)))
+    return basis_data, basis_names
 
-    return basis_data, basis_names, target_basis_idx # 
+# OBSOLETE
+# def make_basis_old(part, basis_config):
+#     # targets = basis_config.keys()
+#     names = list(set(basis for basis_list in basis_config.values()
+#                      for basis in basis_list))
+#     acc = []
+#     cs = 0
+#     for name in names:
+#         func = getattr(sys.modules[__name__], name)
+#         bf, bn = func(part)
+#         acc.append((bf, bn, cs))
+#         cs += len(bn)
+        
+#     _data, _names, _offsets = zip(*acc)
+#     basis_data = np.column_stack(_data)
+#     basis_names = [n for ns in _names for n in ns]
+
+#     target_basis_idx = defaultdict(list)
+#     for target, t_names in basis_config.items():
+#         for bf, bn, offset in zip(names, _names, _offsets):
+#             if bf in t_names:
+#                 target_basis_idx[target].extend(range(offset, offset+len(bn)))
+
+#     return basis_data, basis_names, target_basis_idx # 
 
 
 def odd_even_basis(part):

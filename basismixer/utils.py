@@ -1,10 +1,22 @@
 #!/usr/bin/env python
 
 import os
+import tempfile
 from collections import defaultdict
 
 import numpy as np
 
+def to_memmap(a, folder=None):
+
+    if folder:
+        os.makedirs(folder, exist_ok=True)
+
+    f = tempfile.NamedTemporaryFile(suffix='.npy', dir=folder)
+    np.save(f.name, a)
+    a_memmap = np.load(f.name, mmap_mode='r')
+    return a_memmap
+    
+    
 def pair_files(dir_dict, remove_incomplete=True, full_path=True):
     """Pair files in directories; dir_dict is of form (label: directory)
 
