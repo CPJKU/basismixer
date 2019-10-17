@@ -5,6 +5,7 @@ import json
 import logging
 import numpy as np
 
+import matplotlib.pyplot as plt
 import torch
 
 import partitura
@@ -31,13 +32,17 @@ def main():
     for musicxml in args.musicxml:
 
         part = partitura.load_musicxml(musicxml)
-
+        
         if not isinstance(part, partitura.score.Part):
             print('No score parts found for {}'.format(musicxml))
 
         basis, names = bf.make_basis(part, basis_names)
         # to move the array to disk and load as a memmap, do:
         # basis = to_memmap(basis, args.cachefolder)
+
+        # plot
+        onsets = np.array([n.start.t for n in part.notes_tied])
+        plot_basis(basis, names, '/tmp/out.png', onsets, title=part.part_name)
 
         idx = np.array([idx_map.setdefault(name, len(idx_map))
                         for i, name in enumerate(names)])
@@ -55,7 +60,40 @@ def main():
 
     # map names to index:
     # inv_idx_map = dict((v,k) for k, v in idx_map.items())
+
+
+def plot_basis(basis, names, out_fn, onsets=None, title=None):
+    n_basis = basis.shape[1]
+
+    if onsets is None:
+        x = np.arange(len(basis))
+    else:
+        x = onsets
+
+    w = len(x)/30
+    h = n_basis
+
+    fig, axs = plt.subplots(n_basis, sharex=True, sharey=True,
+                            gridspec_kw={'hspace': 0})
+    if n_basis == 1:
+        axs = [axs]
     
+    fig.set_size_inches(w, h)
+
+    if title:
+        fig.suptitle(title)
+        
+    for i, name in enumerate(names):
+        axs[i].fill_between(x, 0, basis[:, i], label=name)
+        axs[i].legend(frameon=False)
+
+    fig.tight_layout()
+
+    if title:
+        fig.subplots_adjust(top=0.95)
+
+    fig.savefig(out_fn)
+
 
 class BasisMixerDataSet(torch.utils.data.Dataset):
     def __init__(self, basis, idx, n_basis):

@@ -3,6 +3,9 @@
 import sys
 from collections import defaultdict
 import numpy as np
+from scipy.interpolate import interp1d
+
+import partitura.score as score
 
 def make_basis(part, names):
     acc = []
@@ -18,7 +21,6 @@ def make_basis(part, names):
     _data, _names, _offsets = zip(*acc)
     basis_data = np.column_stack(_data)
     basis_names = [n for ns in _names for n in ns]
-
     return basis_data, basis_names
 
 # OBSOLETE
@@ -48,7 +50,7 @@ def make_basis(part, names):
 
 
 def odd_even_basis(part):
-    N = len(part.notes)
+    N = len(part.notes_tied)
     W = np.ones(N)
     if N % 2 == 0:
         basis_names = ['even']
@@ -60,18 +62,19 @@ def polynomial_pitch_basis(part):
 
     basis_names = ['pitch', 'pitch^2', 'pitch^3']
 
-    pitches = np.array([n.midi_pitch for n in part.notes]).astype(np.float)
+    pitches = np.array([n.midi_pitch for n in part.notes_tied]).astype(np.float)
     W = np.column_stack((pitches/127,
                          pitches**2/127**2,
                          pitches**3/127**3))
     
     return normalize(W), basis_names
 
+
 def duration_basis(part):
 
     basis_names = ['duration']
 
-    nd = np.array([(n.start.t, n.end.t) for n in part.notes])
+    nd = np.array([(n.start.t, n.end.t) for n in part.notes_tied])
     bm = part.beat_map
 
     durations_beat = bm(nd[:, 1]) - bm(nd[:, 0])
@@ -79,6 +82,242 @@ def duration_basis(part):
     W.shape = (-1, 1)
     return normalize(W, 'tanh_unity'), basis_names
 
+
+def loudness_direction_basis(part):
+    onsets = np.array([n.start.t for n in part.notes_tied])
+
+    for d in directions:
+        print(d, d.start.t, d.end.t)
+
+    def direction_to_basis_name(d):
+        if isinstance(d, score.ConstantLoudnessDirection):
+            return d.text
+        elif isinstance(d, score.ImpulsiveLoudnessDirection):
+            return d.text
+        elif isinstance(d, score.IncreasingLoudnessDirection):
+            return 'loudness_incr'
+        elif isinstance(d, score.DecreasingLoudnessDirection):
+            return 'loudness_decr'
+
+    basis_by_name = {}
+    for d in directions:
+        j, bf = basis_by_name.setdefault(direction_to_basis_name(d),
+                                   (len(basis_by_name), np.zeros(len(onsets))))
+        bf += basis_function_activation(d)(onsets)
+
+    W = np.empty((len(onsets), len(basis_by_name)))
+    names = [None]*len(basis_by_name)
+    for name, (j, bf) in basis_by_name.items():
+        W[:, j] = bf
+        names[j] = name
+
+    return normalize(W, 'tanh_unity'), names
+
+
+def tempo_direction_basis(part):
+    onsets = np.array([n.start.t for n in part.notes_tied])
+
+    directions = list(part.iter_all(score.TempoDirection, include_subclasses=True))
+
+    def direction_to_basis_name(d):
+        if isinstance(d, score.ResetTempoDirection):
+            ref = d.reference_tempo
+            if ref:
+                return ref.text
+            else:
+                return d.text
+        elif isinstance(d, score.ConstantTempoDirection):
+            return d.text
+        elif isinstance(d, score.IncreasingTempoDirection):
+            return 'tempo_incr'
+        elif isinstance(d, score.DecreasingTempoDirection):
+            return 'tempo_decr'
+
+    basis_by_name = {}
+    for d in directions:
+        j, bf = basis_by_name.setdefault(direction_to_basis_name(d),
+                                   (len(basis_by_name), np.zeros(len(onsets))))
+        bf += basis_function_activation(d)(onsets)
+
+    W = np.empty((len(onsets), len(basis_by_name)))
+    names = [None]*len(basis_by_name)
+    for name, (j, bf) in basis_by_name.items():
+        W[:, j] = bf
+        names[j] = name
+
+    return normalize(W, 'tanh_unity'), names
+
+
+def basis_function_activation(direction):
+    epsilon = 1e-6
+
+    if isinstance(direction, (score.DynamicLoudnessDirection,
+                              score.DynamicTempoDirection)):
+
+        if isinstance(direction, score.TempoDirection):
+            next_dir = next(direction.start.iter_next(score.ConstantTempoDirection), None)
+        else:
+            next_dir = next(direction.start.iter_next(score.ConstantLoudnessDirection), None)
+
+        if next_dir:
+            # TODO: when next_dir is too far away 
+            sustained_end = next_dir.start.t
+        else:
+            # no sustained activation
+            sustained_end = direction.end.t
+
+        x = [direction.start.t,
+             direction.end.t - epsilon,
+             sustained_end - epsilon]
+        y = [0, 1, 1]
+
+    elif isinstance(direction, (score.ConstantLoudnessDirection,
+                                score.ConstantArticulationDirection,
+                                score.ConstantTempoDirection)):
+        x = [direction.start.t - epsilon,
+             direction.start.t,
+             direction.end.t - epsilon,
+             direction.end.t]
+        y = [0, 1, 1, 0]
+
+    else: # impulsive
+        x = [direction.start.t - epsilon,
+             direction.start.t,
+             direction.start.t + epsilon]
+        y = [0, 1, 0]
+    
+    return interp1d(x, y, bounds_error=False, fill_value=0)
+
+
+def slur_basis(part):
+    names = ['slur_incr', 'slur_decr']
+    onsets = np.array([n.start.t for n in part.notes_tied])
+    slurs = part.iter_all(score.Slur)
+    W = np.zeros((len(onsets), 2))
+
+    for slur in slurs:
+
+        x = [slur.start.t, slur.end.t]
+        y_inc = [0, 1]
+        y_dec = [1, 0]
+        W[:, 0] += interp1d(x, y_inc, bounds_error=False, fill_value=0)(onsets)
+        W[:, 1] += interp1d(x, y_dec, bounds_error=False, fill_value=0)(onsets)
+
+    return normalize(W, 'tanh_unity'), names
+
+
+def articulation_basis(part):
+    names = ['accent', 'strong-accent', 'staccato', 'tenuto',
+             'detached-legato', 'staccatissimo', 'spiccato',
+             'scoop', 'plop', 'doit', 'falloff', 'breath-mark',
+             'caesura', 'stress', 'unstress', 'soft-accent']
+    basis_by_name = {}
+    notes = part.notes_tied
+    N = len(notes)
+    for i, n in enumerate(notes):
+        if n.articulations:
+            for art in n.articulations:
+                if art in names:
+                    j, bf = basis_by_name.setdefault(
+                        art,
+                        (len(basis_by_name), np.zeros(N)))
+                    bf[i] = 1
+
+    M = len(basis_by_name)
+    W = np.empty((N, M))
+    names = [None]*M
+
+    for name, (j, bf) in basis_by_name.items():
+        W[:, j] = bf
+        names[j] = name
+
+    return W, names
+
+# for a subset of the articulations do e.g.
+def staccato_basis(part):
+    W, names = articulation_basis(part)
+    if 'staccato' in names:
+        i = names.index('staccato')
+        return W[:, i:i+1], ['staccato']
+    else:
+        return np.empty(len(W)), []
+
+
+# class GraceBasis(Basis):
+#     # names = ['grace', 'after_grace']
+#     names = ['appoggiatura', 'after_appoggiatura',
+#              'acciaccatura', 'before_acciaccatura']
+
+#     @classmethod
+#     def makeBasis(cls, scorePart):
+#         app_notes = [(i, n) for i, n in enumerate(scorePart.notes)
+#                      if hasattr(n, 'appoggiatura_group_id')]
+#         acc_notes = [(i, n) for i, n in enumerate(scorePart.notes)
+#                      if hasattr(n, 'acciaccatura_group_id')]
+
+#         W = np.zeros((len(scorePart.notes), len(cls.names)))
+
+#         for i, n in app_notes:
+#             if n.grace_type is None:
+#                 W[i, 1] = n.appoggiatura_duration
+#             else:
+#                 W[i, 0] = n.appoggiatura_idx + 1
+
+#         for i, n in acc_notes:
+#             if n.grace_type is None:
+#                 W[i, 3] = n.acciaccatura_duration
+#             else:
+#                 W[i, 2] = n.acciaccatura_idx + 1
+
+#         # main_notes = np.where(np.diff(W) < 0)[0] + 1
+#         # W = np.column_stack((W, np.zeros(W.shape[0])))
+#         # W[main_notes, 1] = 1
+#         return FeatureBasis(soft_normalize(W, preserve_unity=True), cls.make_full_names())
+
+
+def fermata_basis(part):
+    names = ['fermata']
+    onsets = np.array([n.start.t for n in part.notes_tied])
+    W = np.zeros((len(onsets), 1))
+    for ferm in part.iter_all(score.Fermata):
+        W[onsets == ferm.start.t, 0] = 1
+    return W, names
+
+def metrical_basis(part):
+    notes = part.notes_tied
+    ts_map = part.time_signature_map
+    bm = part.beat_map
+    basis_by_name = {}
+    eps = 10**-6
+
+    for i, n in enumerate(notes):
+
+        beats, beat_type = ts_map(n.start.t).astype(int)
+        measure = next(n.start.iter_prev(score.Measure, eq=True), None)
+
+        if measure:
+            measure_start = measure.start.t
+        else:
+            measure_start = 0
+
+        pos = bm(n.start.t) - bm(measure_start)
+
+        if pos % 1 < eps:
+            name = 'metrical_{}_{}_{}'.format(beats, beat_type, int(pos))
+        else:
+            name = 'metrical_{}_{}_weak'.format(beats, beat_type)
+
+        j, bf = basis_by_name.setdefault(name,
+                                         (len(basis_by_name), np.zeros(len(notes))))
+        bf[i] = 1
+
+    W = np.empty((len(notes), len(basis_by_name)))
+    names = [None]*len(basis_by_name)
+    for name, (j, bf) in basis_by_name.items():
+        W[:, j] = bf
+        names[j] = name
+
+    return normalize(W, 'tanh_unity'), names
 
 
 def normalize(data, method='minmax'):
@@ -113,6 +352,8 @@ def normalize(data, method='minmax'):
         return np.tanh(data)
     elif method == 'tanh_unity':
         return np.tanh(data)/np.tanh(1)
+
+    
 
 
 # import logging
@@ -370,48 +611,6 @@ def normalize(data, method='minmax'):
 # #                       (direction.start.t + epsilon, 0)])
 # #     return interpolate_feature(onsets, d)
 
-# def make_local_loudness_direction_feature(onsets, direction):
-#     # TODO: make sure that for dynamic, there is a step to follow the ramp
-#     constant_type = ConstantLoudnessDirection
-#     dynamic_type = DynamicLoudnessDirection
-
-#     epsilon = 1e-6
-#     last_time = onsets[-1]
-
-#     if direction.end is None:
-#         if isinstance(direction, dynamic_type):
-#             nextd = direction.start.get_next_of_type(constant_type)
-#             if len(nextd) > 0:
-#                 direction_end_t = max(direction.start.t + epsilon,
-#                                       nextd[0].start.t - epsilon)
-#             else:
-#                 direction_end_t = last_time
-#         else:
-#             direction_end_t = last_time
-#     else:
-#         direction_end_t = direction.end.t
-
-#     if isinstance(direction, dynamic_type):
-#         d = np.array([(direction.start.t, 0),
-#                       (direction_end_t, 1),
-#                       (direction_end_t + epsilon, 0.0)])
-#     elif isinstance(direction, constant_type):
-#         end = last_time
-#         # if direction.start.next != None:
-#         nextd = direction.start.get_next_of_type(constant_type)
-#         if len(nextd) > 0:
-#             end = nextd[0].start.t
-
-#         d = np.array([(direction.start.t - epsilon, 0),
-#                       (direction.start.t, 1),
-#                       (end - epsilon, 1),
-#                       (end, 0)])
-#         return interpolate_feature(onsets, d)
-#     else:
-#         d = np.array([(direction.start.t - epsilon, 0),
-#                       (direction.start.t, 1),
-#                       (direction.start.t + epsilon, 0)])
-#     return interpolate_feature(onsets, d)
 
 # def make_local_tempo_direction_feature(onsets, direction):
 #     constant_type = ConstantTempoDirection
@@ -677,19 +876,6 @@ def normalize(data, method='minmax'):
 #         assert W.shape[1] == len(names)
 #         return FeatureBasis(soft_normalize(W, preserve_unity=True), cls.make_full_names(names))
 
-
-# class PolynomialPitchBasis(Basis):
-#     names = ['pitch', 'pitch^2', 'pitch^3']
-
-#     @classmethod
-#     def makeBasis(cls, scorePart):
-#         Q = 127.0
-#         pitches = np.array([n.midi_pitch for n in scorePart.notes])
-#         W = np.zeros((len(pitches), 3))
-#         W[:, 0] = pitches / Q
-#         W[:, 1] = pitches**2 / Q**2
-#         W[:, 2] = pitches**3 / Q**3
-#         return FeatureBasis(normalize(W), cls.make_full_names())
 
 # class ExtremePitchBasis(Basis):
 
