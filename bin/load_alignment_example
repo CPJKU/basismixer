@@ -26,24 +26,17 @@ def main():
         if not piece.startswith('Chopin_op10_no3'):
             continue
         part = partitura.load_musicxml(files['xml'].pop())
-
+        with open('/tmp/pretty.txt', 'w') as f:
+            f.write(part.pretty())
+            
+        # upscale time resolution to allow for grace note timing
+        # part.multiply_quarter_durations(100)
+        # partitura.score.expand_grace_notes(part)
+        partitura.save_midi(part, '/tmp/out.mid')
+        
         for match in files['match']:
             print(match)
-            # if not 'p01' in match:
-            #     continue
-            # for n in part.iter_all(partitura.score.GenericNote, include_subclasses=True):
-            #     n.symbolic_duration = None
-            # part.multiply_quarter_durations(2)
-            # print(part.pretty())
-            # return
             _, ppart, alignment = partitura.load_match(match)
-    
-            # future: return unfold info
-            # _, ppart, alignment, score_variant_info = partitura.load_match(files['match'])
-            # sv = ScoreVariant(part)
-            # for seg_start, seg_end in score_variant_info:
-            #     sv.add_segment(seg_start, seg_end)
-            # part = sv.create_variant_part()
     
             part_by_id = dict((n.id, n) for n in part.notes_tied)
             ppart_by_id = dict((n['id'], n) for n in ppart.notes)
@@ -54,13 +47,8 @@ def main():
                           for a in alignment if a['label'] == 'match']
     
             note_pairs.sort(key=lambda x: x[0].start.t)
-            #note_pairs.sort(key=lambda x: x[1]['note_on'])
-            # for sn, n in note_pairs:
-            #     print(sn, n)
+
             matched_score = to_matched_score(note_pairs, part.beat_map)
-            # for a in alignment:
-            #     if 'score_id' in a:
-            #         print(a['score_id'].split('-')[-1])
     
             dyn_codec = pc.NotewiseDynamicsCodec()
             time_codec = pc.TimeCodec()
@@ -73,6 +61,7 @@ def main():
             measure_times[:, 0] = bm(measure_times[:, 0])
             np.savetxt('/tmp/out.txt', onsets)
             plot_targets(targets, perf_codec.parameter_names, '/tmp/out.pdf', onsets=onsets, xticks=measure_times, title=match)
+            break
     
     return
 
