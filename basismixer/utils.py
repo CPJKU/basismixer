@@ -17,7 +17,7 @@ def to_memmap(a, folder=None):
     return a_memmap
     
     
-def pair_files(dir_dict, remove_incomplete=True, full_path=True):
+def pair_files(dir_dict, remove_incomplete=True, full_path=True, by_prefix=True):
     """Pair files in directories; dir_dict is of form (label: directory)
 
     TODO: complete docs below:
@@ -35,16 +35,40 @@ def pair_files(dir_dict, remove_incomplete=True, full_path=True):
         Description of return value
 
     """
-    result = defaultdict(dict)
+    # result = defaultdict(dict)
+    result = defaultdict(lambda: defaultdict(set))
     for label, directory in dir_dict.items():
         for f in os.listdir(directory):
             path = os.path.join(directory, f)
             if os.path.isfile(path):
                 name = os.path.splitext(f)[0]
                 if full_path:
-                    result[name][label] = path
+                    result[name][label].add(path)
                 else:
-                    result[name][label] = f
+                    result[name][label].add(f)
+
+    if by_prefix and result:
+
+        # sort by length
+        snames = sorted(result.keys(), key=lambda x: len(x))
+        # sort lexicographically
+        snames.sort()
+        cur = snames.pop(0)
+        merged = set()
+        while snames:
+            nxt = snames.pop(0)
+            if nxt.startswith(cur):
+                for k, v in result[nxt].items():
+                    if k in result[cur]:
+                        result[cur][k].update(v)
+                    else:
+                        result[cur][k] = v
+                merged.add(nxt)
+            else:
+                cur = nxt
+
+        for n in merged:
+            del result[n]
 
     if remove_incomplete:
         labels = set(dir_dict.keys())

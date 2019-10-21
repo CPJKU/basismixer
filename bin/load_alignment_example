@@ -4,38 +4,130 @@ import argparse
 import json
 import logging
 
+import matplotlib.pyplot as plt
+import numpy as np
+
 import partitura
+from partitura.utils import partition
 import basismixer.basisfunctions
 from basismixer.utils import pair_files
+import basismixer.performance_codec as pc
 
 def main():
     parser = argparse.ArgumentParser(description="Extract match information for performance codec")
-    # parser.add_argument("xmlfolder", help="Folder with MusicXML files")
+    parser.add_argument("xmlfolder", help="Folder with MusicXML files")
     parser.add_argument("matchfolder", help="Folder with match files")
     args = parser.parse_args()
 
-    folders = dict(match=args.matchfolder)
-
+    folders = dict(xml=args.xmlfolder, match=args.matchfolder)
+    
     for piece, files in pair_files(folders).items():
+        # if not piece.startswith('Mozart_K331_1st-mov'):
+        if not piece.startswith('Chopin_op10_no3'):
+            continue
+        part = partitura.load_musicxml(files['xml'].pop())
 
-        # part = partitura.load_musicxml(files['xml'])
-        part, ppart, alignment = partitura.load_match(files['match'])
-
-        part_by_id = dict((n.id, n) for n in part.notes_tied)
-        ppart_by_id = dict((n['id'], n) for n in ppart.notes)
-
-        # pair matched score and performance notes
-        notes = [(part_by_id[a['score_id']],
-                  ppart_by_id[a['performance_id']])
-                 for a in alignment if a['label'] == 'match']
-
-        for sn, n in notes:
-            print(sn, n)
-
-        break
-
+        for match in files['match']:
+            print(match)
+            # if not 'p01' in match:
+            #     continue
+            # for n in part.iter_all(partitura.score.GenericNote, include_subclasses=True):
+            #     n.symbolic_duration = None
+            # part.multiply_quarter_durations(2)
+            # print(part.pretty())
+            # return
+            _, ppart, alignment = partitura.load_match(match)
+    
+            # future: return unfold info
+            # _, ppart, alignment, score_variant_info = partitura.load_match(files['match'])
+            # sv = ScoreVariant(part)
+            # for seg_start, seg_end in score_variant_info:
+            #     sv.add_segment(seg_start, seg_end)
+            # part = sv.create_variant_part()
+    
+            part_by_id = dict((n.id, n) for n in part.notes_tied)
+            ppart_by_id = dict((n['id'], n) for n in ppart.notes)
+    
+            # pair matched score and performance notes
+            note_pairs = [(part_by_id[a['score_id']], #.split('-')[0]],
+                           ppart_by_id[a['performance_id']])
+                          for a in alignment if a['label'] == 'match']
+    
+            note_pairs.sort(key=lambda x: x[0].start.t)
+            #note_pairs.sort(key=lambda x: x[1]['note_on'])
+            # for sn, n in note_pairs:
+            #     print(sn, n)
+            matched_score = to_matched_score(note_pairs, part.beat_map)
+            # for a in alignment:
+            #     if 'score_id' in a:
+            #         print(a['score_id'].split('-')[-1])
+    
+            dyn_codec = pc.NotewiseDynamicsCodec()
+            time_codec = pc.TimeCodec()
+            perf_codec = pc.PerformanceCodec(time_codec, dyn_codec)
+            targets, mbp = perf_codec.encode(matched_score)
+            targets[np.isnan(targets)] = 0
+            bm = part.beat_map
+            onsets = bm([n.start.t for n, _ in note_pairs])
+            measure_times = np.array([(m.start.t, m.number) for m in part.iter_all(partitura.score.Measure)])
+            measure_times[:, 0] = bm(measure_times[:, 0])
+            np.savetxt('/tmp/out.txt', onsets)
+            plot_targets(targets, perf_codec.parameter_names, '/tmp/out.pdf', onsets=onsets, xticks=measure_times, title=match)
+    
     return
 
+def plot_targets(targets, names, out_fn, onsets=None, xticks=None, title=None):
+    n_targets = targets.shape[1]
+
+    if onsets is None:
+        x = np.arange(len(targets))
+    else:
+        x = onsets
+
+    w = len(x)/30
+    h = n_targets
+
+    fig, axs = plt.subplots(n_targets, sharex=True,
+                            gridspec_kw={'hspace': 0.15})
+    if n_targets == 1:
+        axs = [axs]
+    
+    fig.set_size_inches(w, h)
+
+    if title:
+        fig.suptitle(title)
+        
+    for i, name in enumerate(names):
+        axs[i].plot(x, targets[:, i], '.', label=name)
+
+        if xticks is not None:
+            axs[i].set_xticks(xticks[:, 0])
+            axs[i].set_xticklabels(xticks[:, 1])
+            axs[i].xaxis.grid()
+
+        by_onset = partition(lambda ix: ix[1], enumerate(x))
+        tt = []
+        vv = []
+        for t, v in by_onset.items():
+            tt.append(t)
+            vv.append(np.mean([targets[j, i] for j, _ in v]))
+        axs[i].plot(tt, vv)
+        
+        axs[i].legend(frameon=False, loc=1)
+
+    fig.savefig(out_fn, bbox_inches='tight')
+    plt.close(fig)
+    
+def to_matched_score(note_pairs, beat_map):
+    ms = []
+    for sn, n in note_pairs:
+        sn_on, sn_off = beat_map([sn.start.t, sn.end.t])
+        sn_dur = sn_off - sn_on
+        n_dur = n['sound_off'] - n['note_on']
+        ms.append((sn_on, sn_dur, sn.midi_pitch, n['note_on'], n_dur, n['velocity']))
+    fields = [('onset', 'f4'), ('duration', 'f4'), ('pitch', 'i4'),
+              ('p_onset', 'f4'), ('p_duration', 'f4'), ('velocity', 'i4')]
+    return np.array(ms, dtype=fields)
 
 if __name__ == '__main__':
     main()
