@@ -23,7 +23,8 @@ def main():
     
     for piece, files in pair_files(folders).items():
         # if not piece.startswith('Mozart_K331_1st-mov'):
-        if not piece.startswith('Chopin_op10_no3'):
+        if not piece.startswith('Chopin_op38'):
+        # if not piece.startswith('Chopin_op10_no3'):
             continue
         part = partitura.load_musicxml(files['xml'].pop())
         with open('/tmp/pretty.txt', 'w') as f:
@@ -31,10 +32,12 @@ def main():
             
         # upscale time resolution to allow for grace note timing
         # part.multiply_quarter_durations(100)
-        # partitura.score.expand_grace_notes(part)
+        partitura.score.expand_grace_notes(part, .01, .5)
         partitura.save_midi(part, '/tmp/out.mid')
         
         for match in files['match']:
+            if not 'p12' in match:
+                continue
             print(match)
             _, ppart, alignment = partitura.load_match(match)
     
@@ -55,6 +58,8 @@ def main():
             perf_codec = pc.PerformanceCodec(time_codec, dyn_codec)
             targets, mbp = perf_codec.encode(matched_score)
             targets[np.isnan(targets)] = 0
+            ids = np.array([n.id for n, _ in note_pairs])
+            print_outliers(ids, targets)
             bm = part.beat_map
             onsets = bm([n.start.t for n, _ in note_pairs])
             measure_times = np.array([(m.start.t, m.number) for m in part.iter_all(partitura.score.Measure)])
@@ -64,6 +69,21 @@ def main():
             break
     
     return
+
+def print_outliers(ids, targets):
+    lo, hi = np.percentile(targets[:, 2], [1, 99])
+    print('low timing')
+    print(ids[np.where(targets[:, 2] < lo)[0]])
+    print('hi timing')
+    print(ids[np.where(targets[:, 2] > hi)[0]])
+    print(lo, hi)
+
+    lo, hi = np.percentile(targets[:, 1], [1, 99])
+    print('low bp')
+    print(ids[np.where(targets[:, 1] < lo)[0]])
+    print('hi bp')
+    print(ids[np.where(targets[:, 1] > hi)[0]])
+    print(lo, hi)
 
 def plot_targets(targets, names, out_fn, onsets=None, xticks=None, title=None):
     n_targets = targets.shape[1]
