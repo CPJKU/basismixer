@@ -40,8 +40,8 @@ def init():
     display(status)
     status.clear_output()
 
-    # assume we have the data to avoid download
-    DATASET_DIR = '/tmp/vienna4x22_rematched.git'
+    # # assume we have the data to avoid download
+    # DATASET_DIR = '/tmp/vienna4x22_rematched.git'
 
     if not DATASET_DIR:
         status.append_stdout('Downloading Vienna 4x22 Corpus...')
