@@ -30,13 +30,12 @@ class PerformanceCodec(object):
 
         self.parameter_names = (self.dynamics_codec.parameter_names +
                                 self.time_codec.parameter_names)
-
         self.default_values = default_values
 
     def encode(self, matched_score, return_u_onset_idx=False):
 
         # Get time-related parameters
-        (time_params, mean_beat_period,
+        (time_params,
          unique_onset_idxs) = self.time_codec.encode(
             score_onsets=matched_score['onset'],
             performed_onsets=matched_score['p_onset'],
@@ -53,31 +52,31 @@ class PerformanceCodec(object):
             unique_onset_idxs=unique_onset_idxs)
 
         # Concatenate parameters into a single matrix
-        parameters = np.column_stack((dynamics_params, time_params))
-
-        output = [parameters, mean_beat_period]
+        # parameters = np.column_stack((dynamics_params, time_params))
+        parameters = np.array(
+            [tuple(d) + tuple(t)
+             for d, t in zip(dynamics_params, time_params)],
+            dtype=[(pn, 'f4') for pn in self.parameter_names])
 
         if return_u_onset_idx:
-            output.append(unique_onset_idxs)
+            return parameters, unique_onset_idxs
+        else:
+            return parameters
 
-        return output
-
-    def decode(self, score, parameters, mean_beat_period, midi_out_fn=None,
+    def decode(self, score, parameters, midi_out_fn=None,
                time_div=500, tempo=500000, sanitize=True, *args, **kwargs):
 
         pitches = score['pitch']
 
         clip(pitches, 1, 127)
 
-        dynamics_params = parameters[:, :len(self.dynamics_codec.parameter_names)]
-
-        time_params = parameters[:, len(self.dynamics_codec.parameter_names):]
+        dynamics_params = parameters[list(self.dynamics_codec.parameter_names)]
+        time_params = parameters[list(self.time_codec.parameter_names)]
 
         onsets_durations = self.time_codec.decode(
             score_onsets=score['onset'],
             score_durations=score['duration'],
-            parameters=time_params,
-            mean_beat_period=mean_beat_period, *args, **kwargs)
+            parameters=time_params, *args, **kwargs)
 
         velocities = self.dynamics_codec.decode(
             pitches=score['pitch'],
@@ -335,6 +334,30 @@ def tempo_by_derivative(score_onsets, performed_onsets,
 # * Get rid of the tempo normalization classes and use methods instead?
 
 
+def bp_rescale(tempo_param, mean_beat_period):
+    return tempo_param
+
+
+def log_bp_rescale(tempo_param, mean_beat_period):
+    return 2 ** tempo_param
+
+
+def standardized_bp_rescale(tempo_param, mean_beat_period, std_bp):
+    return tempo_param * std_bp + mean_beat_period
+
+
+def bpr_rescale(tempo_param, mean_beat_period):
+    return tempo_param * mean_beat_period
+
+
+TEMPO_NORM_DICT = dict(
+    beat_period=dict(scale=lambda x: x,
+                     rescale=bp_rescale),
+    log_bp=dict(scale=lambda x: np.log2(x),
+                rescale=log_bp_rescale)
+)
+
+
 class TempoNormalization(object):
     def __init__(self, name='beat_period'):
         self.name = name
@@ -510,7 +533,6 @@ def monotonize_times(s, strict=True, deltas=None, return_interp_seq=False):
        a monotonic sequence that has been linearly interpolated using a subset of s
 
     """
-
     if strict:
         eps = np.finfo(np.float32).eps
     else:
@@ -524,7 +546,7 @@ def monotonize_times(s, strict=True, deltas=None, return_interp_seq=False):
     mask = np.ones(_s.shape[0], dtype=np.bool)
     monotonic_mask = _monotonize_times(_s, mask, strict, _deltas)[1:-1]  # is the mask always changed in place?
     mask[0] = mask[-1] = False
-    #s_mono = interp1d(idx[mask], _s[mask])(idx[1:-1])
+    # s_mono = interp1d(idx[mask], _s[mask])(idx[1:-1])
     if return_interp_seq:
         idx = np.arange(_s.shape[0])
         s_mono = interp1d(idx[mask], _s[mask])(idx[1:-1])
@@ -594,14 +616,15 @@ class NotewiseDynamicsCodec(object):
 
     def encode(self, pitches, velocities, *args, **kwargs):
 
-        return velocities / 127.0
+        return (velocities / 127.0).reshape(-1, 1)
 
     def decode(self, pitches, parameters, *args, **kwargs):
 
-        if np.max(parameters) <= 1:
-            return np.round(parameters * 127.0)
+        velocity = parameters['velocity']
+        if np.max(velocity) <= 1:
+            return np.round(velocity * 127.0)
         else:
-            return np.round(parameters)
+            return np.round(velocity)
 
 
 class OnsetwiseDecompositionDynamicsCodec(object):
@@ -629,9 +652,10 @@ class TimeCodec(object):
         if parameter_names == 'auto':
             self.parameter_names = (self.normalization.name,
                                     'timing',
-                                    'log_articulation')
+                                    'log_articulation',
+                                    'mean_beat_period')
         elif isinstance(parameter_names, (list, tuple)):
-            self.parameter_names = parameter_names
+            self.parameter_names = tuple(parameter_names)
         else:
             raise Exception('Unknown parameter names specification: {}'.format(parameter_names))
 
@@ -654,10 +678,6 @@ class TimeCodec(object):
         score = np.column_stack((score_onsets, score_durations))
         performance = np.column_stack((performed_onsets, performed_durations))
 
-        return self._encode(score, performance, return_u_onset_idx)
-
-    def _encode(self, score, performance,
-                return_u_onset_idx=False, segment_idx=0):
         # Compute beat period
         beat_period, s_onsets, unique_onset_idxs = self.tempo_fun(
             score_onsets=score[:, 0],
@@ -665,6 +685,8 @@ class TimeCodec(object):
             score_durations=score[:, 1],
             performed_durations=performance[:, 1],
             return_onset_idxs=True)
+
+        mean_beat_period = beat_period.mean() * np.ones_like(beat_period)
 
         # Compute equivalent onsets
         eq_onsets = (np.cumsum(np.r_[0, beat_period[:-1] * np.diff(s_onsets)]) +
@@ -681,20 +703,22 @@ class TimeCodec(object):
             beat_period=beat_period)
 
         # Initialize array of parameters
-        parameters = np.zeros((score.shape[0], 3))
+        # parameters = np.array([], dtype=[(pn, 'f4') for pn in self.parameter_names])
+        parameters = np.zeros((score.shape[0], len(self.parameter_names)))
         parameters[:, 2] = articulation_param
         for i, jj in enumerate(unique_onset_idxs):
             parameters[jj, 0] = tempo_param[i]
             # Defined as in Eq. (3.9) in Thesis (pp. 34)
             parameters[jj, 1] = eq_onsets[i] - performance[jj, 0]
+            # Mean beat period
+            parameters[jj, 3] = mean_beat_period[i]
 
         if return_u_onset_idx:
-            return parameters, beat_period.mean(), unique_onset_idxs
+            return parameters, unique_onset_idxs
         else:
-            return parameters, beat_period.mean()
+            return parameters
 
-    def decode(self, score_onsets, score_durations, parameters,
-               mean_beat_period, *args, **kwargs):
+    def decode(self, score_onsets, score_durations, parameters, *args, **kwargs):
 
         score_onsets = score_onsets.astype(np.float64, copy=False)
         score_durations = score_durations.astype(np.float64, copy=False)
@@ -708,28 +732,36 @@ class TimeCodec(object):
         total_dur = score_info['total_dur']
         diff_u_onset_score = score_info['diff_u_onset']
 
-        time_param = np.array([np.mean(parameters[uix, 0])
+        time_param_name, rescale_fun = get_time_param_decoder(parameters)
+        time_param = np.array([np.mean(parameters[time_param_name][uix])
                                for uix in unique_onset_idxs])
 
-        beat_period = self.normalization.rescale_tempo(time_param,
-                                                       mean_beat_period,
-                                                       *args, **kwargs)
+        beat_period = rescale_fun(time_param,
+                                  parameters['mean_beat_period'],
+                                  *args, **kwargs)
 
         ioi_perf = diff_u_onset_score * beat_period
 
         eq_onset = np.cumsum(np.r_[0, ioi_perf])
 
-        performance = np.zeros((score_onsets.shape[0], 2))
+        performance = np.zeros((len(score_onsets), 2))
 
         for i, jj in enumerate(unique_onset_idxs):
             # decode onset
-            performance[jj, 0] = eq_onset[i] - parameters[jj, 1]
+            performance[jj, 0] = eq_onset[i] - parameters['timing'][jj]
             # decode duration
             performance[jj, 1] = decode_articulation(
                 score_durations=score_durations[jj],
-                articulation_parameter=parameters[jj, 2],
+                articulation_parameter=parameters['log_articulation'][jj],
                 beat_period=beat_period[i])
 
         performance[:, 0] -= np.min(performance[:, 0])
 
         return performance
+
+
+def get_time_param_decoder(parameters):
+
+    for pn in parameters.dtype.names:
+        if pn in TEMPO_NORM_DICT:
+            return pn, TEMPO_NORM_DICT[pn]['rescale']
