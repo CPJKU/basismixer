@@ -608,6 +608,8 @@ def _monotonize_times(s, mask, strict, deltas=None):
 
         return _monotonize_times(s, mask, strict, deltas)
 
+#### Codecs for Dynamics ####
+
 
 class NotewiseDynamicsCodec(object):
     """
@@ -664,6 +666,8 @@ class OnsetwiseDecompositionDynamicsCodec(object):
             return np.round(velocity * 127.0)
         else:
             return np.round(velocity)
+
+#### Codecs for time-related parameters ####
 
 
 class TimeCodec(object):
@@ -792,6 +796,8 @@ class TimeCodec(object):
         performance[:, 0] -= np.min(performance[:, 0])
 
         return performance
+
+#### Miscellaneous utilities ####
 
 
 def sort_matched_score(matched_score, return_sort_idx=False):
