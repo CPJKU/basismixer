@@ -27,7 +27,7 @@ def main():
         if not piece.startswith('Schubert'):
             continue
         part = partitura.load_musicxml(files['xml'].pop())
-
+        partitura.score.expand_grace_notes(part)
         partitura.save_midi(part, '/tmp/out.mid')
 
         with open('/tmp/pretty.txt', 'w') as pretty:
@@ -74,6 +74,17 @@ def main():
             targets = perf_codec.encode(matched_score)
 
             reconstructed_performance = perf_codec.decode(matched_score, targets)
+
+            assert np.all(matched_score['velocity'] == reconstructed_performance['velocity'])
+            assert np.all(np.isclose(matched_score['p_onset'] -
+                                     matched_score['p_onset'].min(),
+                                     reconstructed_performance['p_onset']))
+            # grace_idx = np.where(matched_score['duration'] != 0)[0]
+            grace_idx = np.arange(len(matched_score), dtype=np.int)
+            assert np.all(np.isclose(matched_score['p_duration'][grace_idx],
+                                     reconstructed_performance['p_duration'][grace_idx]))
+            # import pdb
+            # pdb.set_trace()
             # targets[np.isnan(targets)] = 0
             bm = part.beat_map
             onsets = bm([n.start.t for n, _ in note_pairs])
@@ -123,8 +134,11 @@ def plot_targets(targets, names, out_fn, onsets=None, xticks=None, title=None):
             vv.append(np.mean([targets[name][j] for j, _ in v]))
 
         if name == 'mean_beat_period':
-            axs[i].set_ylim((np.mean(vv) - 2 * np.std(vv),
-                             np.mean(vv) + 2 * np.std(vv)))
+            ymax = np.mean(vv) + 2 * np.std(vv)
+            ymin = np.mean(vv) - 2 * np.std(vv)
+
+            axs[i].set_ylim((np.minimum(ymin, 0),
+                             np.maximum(ymax, np.mean(vv) + 1)))
         axs[i].plot(tt, vv)
 
         axs[i].legend(frameon=False, loc=1)

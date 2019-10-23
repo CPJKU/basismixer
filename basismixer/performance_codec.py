@@ -33,62 +33,77 @@ class PerformanceCodec(object):
         self.default_values = default_values
 
     def encode(self, matched_score, return_u_onset_idx=False):
+        """
+        Encode expressive parameters from a matched performance
 
+        Parameters
+        ----------
+        matched_score : structured array
+            Performance matched to its score.
+        return_u_onset_idx : bool
+            Return the indices of the unique score onsets
+        """
+        m_score, resort_idx = sort_matched_score(matched_score)
         # Get time-related parameters
         (time_params,
          unique_onset_idxs) = self.time_codec.encode(
-            score_onsets=matched_score['onset'],
-            performed_onsets=matched_score['p_onset'],
-            score_durations=matched_score['duration'],
-            performed_durations=matched_score['p_duration'],
+            score_onsets=m_score['onset'],
+            performed_onsets=m_score['p_onset'],
+            score_durations=m_score['duration'],
+            performed_durations=m_score['p_duration'],
             return_u_onset_idx=True)
 
         # Get dynamics-related parameters
         dynamics_params = self.dynamics_codec.encode(
-            pitches=matched_score['pitch'],
-            velocities=matched_score['velocity'],
-            score_onsets=matched_score['onset'],
-            score_durations=matched_score['duration'],
+            pitches=m_score['pitch'],
+            velocities=m_score['velocity'],
+            score_onsets=m_score['onset'],
+            score_durations=m_score['duration'],
             unique_onset_idxs=unique_onset_idxs)
 
         # Concatenate parameters into a single matrix
-        # parameters = np.column_stack((dynamics_params, time_params))
         parameters = np.array(
             [tuple(d) + tuple(t)
              for d, t in zip(dynamics_params, time_params)],
             dtype=[(pn, 'f4') for pn in self.parameter_names])
+        # resort parameters to have the same order as the score
+        parameters = parameters[resort_idx]
+
+        unique_onset_idxs = [resort_idx[uix] for uix in unique_onset_idxs]
 
         if return_u_onset_idx:
             return parameters, unique_onset_idxs
         else:
             return parameters
 
-    def decode(self, score, parameters, midi_out_fn=None,
-               time_div=500, tempo=500000, sanitize=True, *args, **kwargs):
+    def decode(self, score, parameters,
+               sanitize=True, *args, **kwargs):
 
-        pitches = score['pitch']
+        m_score, resort_idx, sort_idx = sort_matched_score(score,
+                                                           return_sort_idx=True)
+        pitches = m_score['pitch']
 
         clip(pitches, 1, 127)
 
-        dynamics_params = parameters[list(self.dynamics_codec.parameter_names)]
-        time_params = parameters[list(self.time_codec.parameter_names)]
+        dynamics_params = parameters[list(self.dynamics_codec.parameter_names)][sort_idx]
+        time_params = parameters[list(self.time_codec.parameter_names)][sort_idx]
 
         onsets_durations = self.time_codec.decode(
-            score_onsets=score['onset'],
-            score_durations=score['duration'],
+            score_onsets=m_score['onset'],
+            score_durations=m_score['duration'],
             parameters=time_params, *args, **kwargs)
 
         velocities = self.dynamics_codec.decode(
-            pitches=score['pitch'],
-            score_onsets=score['onset'],
-            score_durations=score['duration'],
+            pitches=m_score['pitch'],
+            score_onsets=m_score['onset'],
+            score_durations=m_score['duration'],
             parameters=dynamics_params)
 
         clip(velocities, 1, 127)
 
         matched_performance = np.array(
             [(n['pitch'], n['onset'], n['duration'], v, od[0], od[1])
-             for n, v, od in zip(score, velocities, onsets_durations)],
+             for n, v, od in zip(m_score, velocities, onsets_durations)],
             dtype=[('pitch', 'i4'),
                    ('onset', 'f4'),
                    ('duration', 'f4'),
@@ -98,9 +113,8 @@ class PerformanceCodec(object):
 
         # TODO (outside of this function)
         # * Sanitize
-        # * Export MIDI
-
-        return matched_performance
+        # * rescale according to default values
+        return matched_performance[resort_idx]
 
 
 def encode_articulation(score_durations, performed_durations,
@@ -172,7 +186,7 @@ def tempo_by_average(score_onsets, performed_onsets,
     tempo_curve : np.ndarray
         Tempo curve in seconds per beat (spb). If `input_onsets` was provided,
         this array contains the value of the tempo in spb for each onset
-        in `input_onsets`. Otherwise, this array contains the value of the 
+        in `input_onsets`. Otherwise, this array contains the value of the
         tempo in spb for each unique score onset.
     input_onsets : np.ndarray
         The score onsets corresponding to each value of the tempo curve.
@@ -242,7 +256,7 @@ def tempo_by_derivative(score_onsets, performed_onsets,
                         input_onsets=None,
                         return_onset_idxs=False):
     """
-    Computes a tempo curve using the derivative of the average performed 
+    Computes a tempo curve using the derivative of the average performed
     onset times of all notes belonging to the same score onset with respect
     to that score onset. This results in a curve that is smoother than the
     tempo estimated using `tempo_by_average`.
@@ -272,7 +286,7 @@ def tempo_by_derivative(score_onsets, performed_onsets,
     tempo_curve : np.ndarray
         Tempo curve in seconds per beat (spb). If `input_onsets` was provided,
         this array contains the value of the tempo in spb for each onset
-        in `input_onsets`. Otherwise, this array contains the value of the 
+        in `input_onsets`. Otherwise, this array contains the value of the
         tempo in spb for each unique score onset.
     input_onsets : np.ndarray
         The score onsets corresponding to each value of the tempo curve.
@@ -330,88 +344,128 @@ def tempo_by_derivative(score_onsets, performed_onsets,
 
     return output
 
-# TODO:
-# * Get rid of the tempo normalization classes and use methods instead?
+
+#### Temo Parameter Normalizations ####
+def bp_scale(beat_period):
+    return [beat_period]
 
 
-def bp_rescale(tempo_param, mean_beat_period):
-    return tempo_param
+def bp_rescale(tempo_params):
+    return tempo_params['beat_period']
 
 
-def log_bp_rescale(tempo_param, mean_beat_period):
-    return 2 ** tempo_param
+def log_bp_scale(beat_period):
+    return [np.log2(beat_period)]
 
 
-def standardized_bp_rescale(tempo_param, mean_beat_period, std_bp):
-    return tempo_param * std_bp + mean_beat_period
+def log_bp_rescale(tempo_params):
+    return 2 ** tempo_params['log_bp']
 
 
-def bpr_rescale(tempo_param, mean_beat_period):
-    return tempo_param * mean_beat_period
+def standardized_bp_scale(beat_period):
+    std_bp = np.std(beat_period) * np.ones_like(beat_period)
+    mean_beat_period = np.mean(beat_period) * np.ones_like(beat_period)
+    standardized_bp = (beat_period - mean_beat_period) / std_bp
+    return [standardized_bp, mean_beat_period, std_bp]
 
 
-TEMPO_NORM_DICT = dict(
-    beat_period=dict(scale=lambda x: x,
-                     rescale=bp_rescale),
-    log_bp=dict(scale=lambda x: np.log2(x),
-                rescale=log_bp_rescale)
+def standardized_bp_rescale(tempo_params):
+    return (tempo_params['standardized_bp'] * tempo_params['std_bp'] +
+            tempo_params['mean_beat_period'])
+
+
+def bpr_scale(beat_period):
+    mean_beat_period = np.mean(beat_period) * np.ones_like(beat_period)
+    bpr = beat_period / mean_beat_period
+    return [bpr, mean_beat_period]
+
+
+def bpr_rescale(tempo_params):
+    return tempo_params['beat_period'] * tempo_params['mean_beat_period']
+
+
+def log_bpr_scale(beat_period):
+    bpr, mean_beat_period = bpr_scale(beat_period)
+    return [np.log2(bpr), mean_beat_period]
+
+
+def log_bpr_rescale(tempo_params):
+    return (2 ** tempo_params['log_bpr'] * tempo_params['mean_beat_period'])
+
+
+TEMPO_NORMALIZATION = dict(
+    beat_period=dict(scale=bp_scale,
+                     rescale=bp_rescale,
+                     param_names=('beat_period',)),
+    log_bp=dict(scale=log_bp_scale,
+                rescale=log_bp_rescale,
+                param_names=('log_bp',)),
+    bpr=dict(scale=bpr_scale,
+             rescale=bpr_rescale,
+             param_names=('bpr', 'mean_beat_period')),
+    log_bpr=dict(scale=log_bpr_scale,
+                 rescale=log_bpr_rescale,
+                 param_names=('log_bpr', 'mean_beat_period')),
+    standardized_bp=dict(scale=standardized_bp_scale,
+                         rescale=standardized_bp_rescale,
+                         param_names=('standardized_bp', 'mean_beat_period', 'std_bp'))
 )
 
 
-class TempoNormalization(object):
-    def __init__(self, name='beat_period'):
-        self.name = name
+# class TempoNormalization(object):
+#     def __init__(self, name='beat_period'):
+#         self.name = name
 
-    def normalize_tempo(self, tempo_curve):
-        return tempo_curve
+#     def normalize_tempo(self, tempo_curve):
+#         return tempo_curve
 
-    def rescale_tempo(self, tempo_param, mean_beat_period,
-                      *args, **kwargs):
-        return tempo_param
-
-
-class LogTempoNormalization(TempoNormalization):
-    def __init__(self):
-        super().__init__('log_bp')
-
-    def normalize_tempo(self, tempo_curve):
-        return np.log2(tempo_curve)
-
-    def rescale_tempo(self, tempo_param, mean_beat_period):
-        return 2 ** tempo_param
+#     def rescale_tempo(self, tempo_param, mean_beat_period,
+#                       *args, **kwargs):
+#         return tempo_param
 
 
-class StandardTempoNormalization(TempoNormalization):
-    def __init__(self):
-        super().__init__('standardized_bp')
+# class LogTempoNormalization(TempoNormalization):
+#     def __init__(self):
+#         super().__init__('log_bp')
 
-    def normalize_tempo(self, tempo_curve):
-        return (tempo_curve - np.mean(tempo_curve)) / np.std(tempo_curve)
+#     def normalize_tempo(self, tempo_curve):
+#         return np.log2(tempo_curve)
 
-    def rescale_tempo(self, tempo_param, mean_beat_period, std_bp):
-        return tempo_param * std_bp + mean_beat_period
-
-
-class MeanTempoNormalization(TempoNormalization):
-    def __init__(self):
-        super().__init__('bpr')
-
-    def normalize_tempo(self, tempo_curve):
-        return tempo_curve / tempo_curve.mean()
-
-    def rescale_tempo(self, tempo_param, mean_beat_period):
-        return tempo_param * mean_beat_period
+#     def rescale_tempo(self, tempo_param, mean_beat_period):
+#         return 2 ** tempo_param
 
 
-class LogRelTempoNormalization(TempoNormalization):
-    def __init__(self):
-        super().__init__('log_bpr')
+# class StandardTempoNormalization(TempoNormalization):
+#     def __init__(self):
+#         super().__init__('standardized_bp')
 
-    def normalize_tempo(self, tempo_curve):
-        return np.log2(tempo_curve / tempo_curve.mean())
+#     def normalize_tempo(self, tempo_curve):
+#         return (tempo_curve - np.mean(tempo_curve)) / np.std(tempo_curve)
 
-    def rescale_tempo(self, tempo_param, mean_beat_period):
-        return (2**tempo_param) * mean_beat_period
+#     def rescale_tempo(self, tempo_param, mean_beat_period, std_bp):
+#         return tempo_param * std_bp + mean_beat_period
+
+
+# class MeanTempoNormalization(TempoNormalization):
+#     def __init__(self):
+#         super().__init__('bpr')
+
+#     def normalize_tempo(self, tempo_curve):
+#         return tempo_curve / tempo_curve.mean()
+
+#     def rescale_tempo(self, tempo_param, mean_beat_period):
+#         return tempo_param * mean_beat_period
+
+
+# class LogRelTempoNormalization(TempoNormalization):
+#     def __init__(self):
+#         super().__init__('log_bpr')
+
+#     def normalize_tempo(self, tempo_curve):
+#         return np.log2(tempo_curve / tempo_curve.mean())
+
+#     def rescale_tempo(self, tempo_param, mean_beat_period):
+#         return (2**tempo_param) * mean_beat_period
 
 
 def get_unique_onset_idxs(onsets, eps=1e-6, return_unique_onsets=False):
@@ -425,7 +479,7 @@ def get_unique_onset_idxs(onsets, eps=1e-6, return_unique_onsets=False):
     eps : float
         Small epsilon (for dealing with quantization in symbolic scores).
         This is particularly useful for dealing with triplets and other
-        similar rhytmical structures that do not have a finite decimal 
+        similar rhytmical structures that do not have a finite decimal
         representation.
     return_unique_onsets : bool (optional)
         If `True`, returns the unique score onsets.
@@ -641,23 +695,32 @@ class TimeCodec(object):
     """
 
     def __init__(self,
-                 parameter_names='auto',
-                 tempo_fun=tempo_by_average,
-                 normalization=None):
+                 tempo_fun=tempo_by_derivative,
+                 normalization='beat_period'):
 
-        if normalization is None:
-            normalization = TempoNormalization()
+        try:
+            self.normalization = TEMPO_NORMALIZATION[normalization]
+        except KeyError:
+            raise KeyError('Unknown normalization specification: {}'.format(normalization))
 
-        self.normalization = normalization
-        if parameter_names == 'auto':
-            self.parameter_names = (self.normalization.name,
-                                    'timing',
-                                    'log_articulation',
-                                    'mean_beat_period')
-        elif isinstance(parameter_names, (list, tuple)):
-            self.parameter_names = tuple(parameter_names)
-        else:
-            raise Exception('Unknown parameter names specification: {}'.format(parameter_names))
+        tempo_param_name = self.normalization['param_names'][0]
+
+        self.parameter_names = ((tempo_param_name, 'timing', 'log_articulation') +
+                                self.normalization['param_names'][1:])
+
+        # if normalization is None:
+        #     normalization = TempoNormalization()
+
+        # self.normalization = normalization
+        # if parameter_names == 'auto':
+        #     self.parameter_names = (self.normalization.name,
+        #                             'timing',
+        #                             'log_articulation',
+        #                             'mean_beat_period')
+        # elif isinstance(parameter_names, (list, tuple)):
+        #     self.parameter_names = tuple(parameter_names)
+        # else:
+        #     raise Exception('Unknown parameter names specification: {}'.format(parameter_names))
 
         self.tempo_fun = tempo_fun
 
@@ -686,14 +749,14 @@ class TimeCodec(object):
             performed_durations=performance[:, 1],
             return_onset_idxs=True)
 
-        mean_beat_period = beat_period.mean() * np.ones_like(beat_period)
+        # mean_beat_period = beat_period.mean() * np.ones_like(beat_period)
 
         # Compute equivalent onsets
         eq_onsets = (np.cumsum(np.r_[0, beat_period[:-1] * np.diff(s_onsets)]) +
                      performance[unique_onset_idxs[0], 0].mean())
 
         # Compute tempo parameter
-        tempo_param = self.normalization.normalize_tempo(beat_period)
+        tempo_params = self.normalization['scale'](beat_period)
 
         # Compute articulation parameter
         articulation_param = encode_articulation(
@@ -707,11 +770,12 @@ class TimeCodec(object):
         parameters = np.zeros((score.shape[0], len(self.parameter_names)))
         parameters[:, 2] = articulation_param
         for i, jj in enumerate(unique_onset_idxs):
-            parameters[jj, 0] = tempo_param[i]
+            parameters[jj, 0] = tempo_params[0][i]
             # Defined as in Eq. (3.9) in Thesis (pp. 34)
             parameters[jj, 1] = eq_onsets[i] - performance[jj, 0]
             # Mean beat period
-            parameters[jj, 3] = mean_beat_period[i]
+            for k, tp in enumerate(tempo_params[1:]):
+                parameters[jj, k + 3] = tp[i]
 
         if return_u_onset_idx:
             return parameters, unique_onset_idxs
@@ -732,13 +796,13 @@ class TimeCodec(object):
         total_dur = score_info['total_dur']
         diff_u_onset_score = score_info['diff_u_onset']
 
-        time_param_name, rescale_fun = get_time_param_decoder(parameters)
-        time_param = np.array([np.mean(parameters[time_param_name][uix])
-                               for uix in unique_onset_idxs])
+        time_param = np.array(
+            [tuple([np.mean(parameters[pn][uix])
+                    for pn in self.normalization['param_names']])
+             for uix in unique_onset_idxs],
+            dtype=[(pn, 'f4') for pn in self.normalization['param_names']])
 
-        beat_period = rescale_fun(time_param,
-                                  parameters['mean_beat_period'],
-                                  *args, **kwargs)
+        beat_period = self.normalization['rescale'](time_param)
 
         ioi_perf = diff_u_onset_score * beat_period
 
@@ -760,8 +824,18 @@ class TimeCodec(object):
         return performance
 
 
-def get_time_param_decoder(parameters):
+def sort_matched_score(matched_score, return_sort_idx=False):
+    # reorder score by score onset and then by pitch
+    pitch_sort_idx = np.argsort(matched_score['pitch'], kind='mergesort')
+    onset_sort_idx = np.argsort(matched_score['onset'][pitch_sort_idx],
+                                kind='mergesort')
 
-    for pn in parameters.dtype.names:
-        if pn in TEMPO_NORM_DICT:
-            return pn, TEMPO_NORM_DICT[pn]['rescale']
+    sort_idx = np.arange(len(matched_score),
+                         dtype=np.int)[pitch_sort_idx][onset_sort_idx]
+    resort_idx = np.argsort(sort_idx)
+    m_score = matched_score[sort_idx]
+
+    if return_sort_idx:
+        return m_score, resort_idx, sort_idx
+    else:
+        return m_score, resort_idx
