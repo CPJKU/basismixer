@@ -20,6 +20,7 @@ from scipy.interpolate import interp1d
 import soundfile
 
 import partitura
+# import partitura.score as score
 from partitura.utils import partition
 import basismixer
 import basismixer.performance_codec as pc
@@ -36,6 +37,9 @@ PERF_CODEC = pc.PerformanceCodec(pc.TimeCodec(), pc.NotewiseDynamicsCodec())
 
 def init():
     global DATASET_DIR, PIECES, PERFORMERS
+
+    plt.rcParams.update({'font.size': 8})
+
     status = widgets.Output()
     display(status)
     status.clear_output()
@@ -81,7 +85,8 @@ def get_performance_info(piece, performer, fig, axs):
     match_fn = os.path.join(DATASET_DIR, 'match', '{}_{}.match'.format(piece, performer))
 
     part = partitura.load_musicxml(musicxml_fn)
-    _, ppart, alignment = partitura.load_match(match_fn)
+    
+    ppart, alignment = partitura.load_match(match_fn, first_note_at_zero=True)
 
     part_by_id = dict((n.id, n) for n in part.notes_tied)
     ppart_by_id = dict((n['id'], n) for n in ppart.notes)
@@ -101,11 +106,13 @@ def get_performance_info(piece, performer, fig, axs):
     bm = part.beat_map
     s_onsets = bm([n.start.t for n, _ in note_pairs])
     p_onsets = np.array([n['note_on'] for _, n in note_pairs])
-    measure_times = np.array([(m.start.t, m.number) for m in
-                              part.iter_all(partitura.score.Measure)])
-    measure_times[:, 0] = bm(measure_times[:, 0])
-
-    plot_targets(fig, axs, targets, onsets=s_onsets,
+    measure_times = np.array([(m.start.t, '{}'.format(m.number)) for m in
+                              part.iter_all(partitura.score.Measure)],
+                             dtype=[('t', 'f4'), ('label', 'U100')])
+    # LOGGER.warning(f'{measure_times}')
+    measure_times['t'] = bm(measure_times['t'])
+    # LOGGER.warning(f'{measure_times}')
+    plot_targets(fig, axs, targets, onsets=s_onsets, xlabel='Measure number',
                  xticks=measure_times) # , title='{} {}'.format(piece, performer))
 
     # score_perf_map = interp1d(s_onsets, p_onsets, bounds_error=False, fill_value='extrapolate')
@@ -115,7 +122,7 @@ def get_performance_info(piece, performer, fig, axs):
 
 
 def plot_targets(fig, axs, targets, onsets=None, xticks=None, title=None,
-                 start=None, end=None):
+                 xlabel=None, start=None, end=None):
     for ax in axs:
         ax.clear()
     
@@ -151,8 +158,8 @@ def plot_targets(fig, axs, targets, onsets=None, xticks=None, title=None,
         axs[i].plot(x, targets[:, i], '.', label=name)
 
         if xticks is not None:
-            axs[i].set_xticks(xticks[:, 0])
-            axs[i].set_xticklabels(xticks[:, 1])
+            axs[i].set_xticks(xticks['t'])
+            axs[i].set_xticklabels(xticks['label'])
             axs[i].xaxis.grid()
 
         by_onset = partition(lambda ix: ix[1], enumerate(x))
@@ -161,6 +168,7 @@ def plot_targets(fig, axs, targets, onsets=None, xticks=None, title=None,
         for t, v in by_onset.items():
             tt.append(t)
             vv.append(np.mean([targets[j, i] for j, _ in v]))
+        # axs[i].plot(tt, vv, label='{} (mean)'.format(name))
         axs[i].plot(tt, vv)
         
         axs[i].legend(frameon=False, loc=2)
@@ -183,6 +191,7 @@ def performance_player():
     fig, axs = plt.subplots(len(PERF_CODEC.parameter_names),
                             sharex=True,
                             gridspec_kw={'hspace': 0.15})
+    plt.subplots_adjust(left=0.07, right=0.99, top=.99, bottom=0.1)
     
     def update_current_perf(info, item):
         nonlocal current_performance
