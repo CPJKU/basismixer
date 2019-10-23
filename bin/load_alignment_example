@@ -69,15 +69,15 @@ def main():
             #         print(a['score_id'].split('-')[-1])
 
             dyn_codec = pc.NotewiseDynamicsCodec()
-            time_codec = pc.TimeCodec()
+            time_codec = pc.TimeCodec(normalization='standardized_bp')
             perf_codec = pc.PerformanceCodec(time_codec, dyn_codec)
             targets = perf_codec.encode(matched_score)
 
             reconstructed_performance = perf_codec.decode(matched_score, targets)
 
             assert np.all(matched_score['velocity'] == reconstructed_performance['velocity'])
-            assert np.all(np.isclose(matched_score['p_onset'] -
-                                     matched_score['p_onset'].min(),
+            assert np.all(np.isclose(matched_score['p_onset']
+                                     - matched_score['p_onset'].min(),
                                      reconstructed_performance['p_onset']))
             # grace_idx = np.where(matched_score['duration'] != 0)[0]
             grace_idx = np.arange(len(matched_score), dtype=np.int)
@@ -133,12 +133,11 @@ def plot_targets(targets, names, out_fn, onsets=None, xticks=None, title=None):
             tt.append(t)
             vv.append(np.mean([targets[name][j] for j, _ in v]))
 
-        if name == 'mean_beat_period':
-            ymax = np.mean(vv) + 2 * np.std(vv)
-            ymin = np.mean(vv) - 2 * np.std(vv)
+        ymax = np.mean(vv) + 2 * np.std(vv)
+        ymin = np.mean(vv) - 2 * np.std(vv)
 
-            axs[i].set_ylim((np.minimum(ymin, 0),
-                             np.maximum(ymax, np.mean(vv) + 1)))
+        axs[i].set_ylim((np.minimum(ymin, np.mean(vv) - 1),
+                         np.maximum(ymax, np.mean(vv) + 1)))
         axs[i].plot(tt, vv)
 
         axs[i].legend(frameon=False, loc=1)
