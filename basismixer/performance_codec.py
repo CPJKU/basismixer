@@ -8,6 +8,8 @@ import sys
 import numpy as np
 import logging
 
+import numpy.lib.recfunctions as rfn
+
 from scipy.interpolate import interp1d
 from scipy.misc import derivative
 
@@ -62,10 +64,12 @@ class PerformanceCodec(object):
             unique_onset_idxs=unique_onset_idxs)
 
         # Concatenate parameters into a single matrix
-        parameters = np.array(
-            [tuple(d) + tuple(t)
-             for d, t in zip(dynamics_params, time_params)],
-            dtype=[(pn, 'f4') for pn in self.parameter_names])
+        parameters = rfn.merge_arrays([time_params, dynamics_params],
+                                      flatten=True, usemask=False)
+        # parameters = np.array(
+        #     [tuple(d) + tuple(t)
+        #      for d, t in zip(dynamics_params, time_params)],
+        #     dtype=[(pn, 'f4') for pn in self.parameter_names])
         # resort parameters to have the same order as the score
         parameters = parameters[resort_idx]
 
@@ -613,8 +617,8 @@ class NotewiseDynamicsCodec(object):
     parameter_names = ('velocity', )
 
     def encode(self, pitches, velocities, *args, **kwargs):
-
-        return (velocities / 127.0).reshape(-1, 1)
+        return np.array(velocities, dtype=[('velocity', 'f4')])
+        # return (velocities / 127.0).reshape(-1, 1)
 
     def decode(self, pitches, parameters, *args, **kwargs):
 
@@ -704,16 +708,21 @@ class TimeCodec(object):
             beat_period=beat_period)
 
         # Initialize array of parameters
-        # parameters = np.array([], dtype=[(pn, 'f4') for pn in self.parameter_names])
-        parameters = np.zeros((score.shape[0], len(self.parameter_names)))
-        parameters[:, 2] = articulation_param
+        parameters = np.zeros(len(score), dtype=[(pn, 'f4') for pn in self.parameter_names])
+        # parameters = np.zeros((len(score), len(self.parameter_names)))
+        parameters['log_articulation'] = articulation_param
         for i, jj in enumerate(unique_onset_idxs):
-            parameters[jj, 0] = tempo_params[0][i]
-            # Defined as in Eq. (3.9) in Thesis (pp. 34)
-            parameters[jj, 1] = eq_onsets[i] - performance[jj, 0]
-            # Mean beat period
-            for k, tp in enumerate(tempo_params[1:]):
-                parameters[jj, k + 3] = tp[i]
+            parameters[self.normalization['param_names'][0]][jj] = tempo_params[0][i]
+            parameters['timing'][jj] = eq_onsets[i] - performance[jj, 0]
+
+            for pn, tp in zip(self.normalization['param_names'][1:], tempo_params[1:]):
+                parameters[pn][jj] = tp[i]
+            # parameters[jj, 0] = tempo_params[0][i]
+            # # Defined as in Eq. (3.9) in Thesis (pp. 34)
+            # parameters[jj, 1] = eq_onsets[i] - performance[jj, 0]
+            # # Mean beat period
+            # for k, tp in enumerate(tempo_params[1:]):
+            #     parameters[jj, k + 3] = tp[i]
 
         if return_u_onset_idx:
             return parameters, unique_onset_idxs
