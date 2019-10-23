@@ -636,12 +636,34 @@ class OnsetwiseDecompositionDynamicsCodec(object):
     """
     parameter_names = ('velocity_trend', 'velocity_dev')
 
-    def encode(self, pitches, velocities, *args, **kwargs):
+    def encode(self, pitches, velocities, score_onsets,
+               score_durations, unique_onset_idxs=None,
+               return_u_onset_idx=False,
+               *args, **kwargs):
 
-        return
+        if unique_onset_idxs is None:
+            unique_onset_idxs = get_unique_onset_idxs(score_onsets)
+
+        velocity_trend = np.array([np.max(velocities[uix]) for uix in unique_onset_idxs])
+
+        parameters = np.zeros(len(pitches), dtype=[(pn, 'f4') for pn in self.parameter_names])
+        for i, jj in enumerate(unique_onset_idxs):
+            parameters['velocity_trend'][jj] = velocity_trend[i] / 127.0
+            parameters['velocity_dev'][jj] = (velocity_trend[i] - velocities[jj]) / 127.0
+
+        if return_u_onset_idx:
+            return parameters, unique_onset_idxs
+        else:
+            return parameters
 
     def decode(self, parameters, *args, **kwargs):
-        return
+
+        velocity = parameters['velocity_trend'] - parameters['velocity_dev']
+
+        if np.max(velocity) <= 1:
+            return np.round(velocity * 127.0)
+        else:
+            return np.round(velocity)
 
 
 class TimeCodec(object):
@@ -653,11 +675,12 @@ class TimeCodec(object):
     def __init__(self,
                  tempo_fun=tempo_by_average,
                  normalization='beat_period'):
-
+        # Get tempo normalization
         try:
             self.normalization = TEMPO_NORMALIZATION[normalization]
         except KeyError:
-            raise KeyError('Unknown normalization specification: {}'.format(normalization))
+            raise KeyError('Unknown normalization specification: '
+                           '{}'.format(normalization))
 
         tempo_param_name = self.normalization['param_names'][0]
 
@@ -669,6 +692,9 @@ class TimeCodec(object):
     def encode(self, score_onsets, performed_onsets,
                score_durations, performed_durations,
                return_u_onset_idx=False):
+        """
+        Compute time-related performance parameters from a performance
+        """
 
         if score_onsets.shape != performed_onsets.shape:
             raise ValueError('The performance and the score should be of '
@@ -691,8 +717,6 @@ class TimeCodec(object):
             performed_durations=performance[:, 1],
             return_onset_idxs=True)
 
-        # mean_beat_period = beat_period.mean() * np.ones_like(beat_period)
-
         # Compute equivalent onsets
         eq_onsets = (np.cumsum(np.r_[0, beat_period[:-1] * np.diff(s_onsets)])
                      + performance[unique_onset_idxs[0], 0].mean())
@@ -708,29 +732,28 @@ class TimeCodec(object):
             beat_period=beat_period)
 
         # Initialize array of parameters
-        parameters = np.zeros(len(score), dtype=[(pn, 'f4') for pn in self.parameter_names])
-        # parameters = np.zeros((len(score), len(self.parameter_names)))
+        parameters = np.zeros(len(score),
+                              dtype=[(pn, 'f4') for pn in self.parameter_names])
         parameters['log_articulation'] = articulation_param
         for i, jj in enumerate(unique_onset_idxs):
             parameters[self.normalization['param_names'][0]][jj] = tempo_params[0][i]
+            # Defined as in Eq. (3.9) in Thesis (pp. 34)
             parameters['timing'][jj] = eq_onsets[i] - performance[jj, 0]
 
             for pn, tp in zip(self.normalization['param_names'][1:], tempo_params[1:]):
                 parameters[pn][jj] = tp[i]
-            # parameters[jj, 0] = tempo_params[0][i]
-            # # Defined as in Eq. (3.9) in Thesis (pp. 34)
-            # parameters[jj, 1] = eq_onsets[i] - performance[jj, 0]
-            # # Mean beat period
-            # for k, tp in enumerate(tempo_params[1:]):
-            #     parameters[jj, k + 3] = tp[i]
 
         if return_u_onset_idx:
             return parameters, unique_onset_idxs
         else:
             return parameters
 
-    def decode(self, score_onsets, score_durations, parameters, *args, **kwargs):
-
+    def decode(self, score_onsets, score_durations,
+               parameters, *args, **kwargs):
+        """
+        Decode a performance into onsets and durations in seconds
+        for each note in the score.
+        """
         score_onsets = score_onsets.astype(np.float64, copy=False)
         score_durations = score_durations.astype(np.float64, copy=False)
 
@@ -772,7 +795,17 @@ class TimeCodec(object):
 
 
 def sort_matched_score(matched_score, return_sort_idx=False):
-    # reorder score by score onset and then by pitch
+    """
+    Sort score by score onset and then by pitch
+
+    Parameters
+    ----------
+    matched_score : structured array
+        Matched score
+    return_sort_idx : bool
+        Return indices for sorting the matched_score
+    """
+
     pitch_sort_idx = np.argsort(matched_score['pitch'], kind='mergesort')
     onset_sort_idx = np.argsort(matched_score['onset'][pitch_sort_idx],
                                 kind='mergesort')

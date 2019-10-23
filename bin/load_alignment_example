@@ -24,7 +24,7 @@ def main():
 
     for piece, files in pair_files(folders).items():
         # if not piece.startswith('Mozart_K331_1st-mov'):
-        if not piece.startswith('Schubert'):
+        if not piece.startswith('Mozart_K331_1st'):
             continue
         part = partitura.load_musicxml(files['xml'].pop())
         partitura.score.expand_grace_notes(part)
@@ -68,7 +68,7 @@ def main():
             #     if 'score_id' in a:
             #         print(a['score_id'].split('-')[-1])
 
-            dyn_codec = pc.NotewiseDynamicsCodec()
+            dyn_codec = pc.OnsetwiseDecompositionDynamicsCodec()
             time_codec = pc.TimeCodec(normalization='standardized_bp')
             perf_codec = pc.PerformanceCodec(time_codec, dyn_codec)
             targets = perf_codec.encode(matched_score)
