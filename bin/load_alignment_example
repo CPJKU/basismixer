@@ -42,7 +42,7 @@ def main():
             # part.multiply_quarter_durations(2)
             # print(part.pretty())
             # return
-            _, ppart, alignment = partitura.load_match(match)
+            ppart, alignment = partitura.load_match(match)
 
             # future: return unfold info
             # _, ppart, alignment, score_variant_info = partitura.load_match(files['match'])
