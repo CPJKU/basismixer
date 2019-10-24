@@ -30,11 +30,11 @@ class PerformanceCodec(object):
 
         self.dynamics_codec = dynamics_codec
 
-        self.parameter_names = (self.dynamics_codec.parameter_names +
-                                self.time_codec.parameter_names)
+        self.parameter_names = (self.dynamics_codec.parameter_names
+                                + self.time_codec.parameter_names)
         self.default_values = default_values
 
-    def encode(self, matched_score, return_u_onset_idx=False):
+    def encode(self, part, ppart, alignment, return_u_onset_idx=False):
         """
         Encode expressive parameters from a matched performance
 
@@ -45,6 +45,21 @@ class PerformanceCodec(object):
         return_u_onset_idx : bool
             Return the indices of the unique score onsets
         """
+
+        part_by_id = dict((n.id, n) for n in part.notes_tied)
+        ppart_by_id = dict((n['id'], n) for n in ppart.notes)
+
+        # pair matched score and performance notes
+        note_pairs = [(part_by_id[a['score_id']],  # .split('-')[0]],
+                       ppart_by_id[a['performance_id']])
+                      for a in alignment if a['label'] == 'match']
+
+        note_pairs.sort(key=lambda x: x[0].start.t)
+        note_pairs.sort(key=lambda x: x[1]['note_on'])
+        # for sn, n in note_pairs:
+        #     print(sn, n)
+        matched_score = to_matched_score(note_pairs, part.beat_map)
+
         m_score, resort_idx = sort_matched_score(matched_score)
         # Get time-related parameters
         (time_params,
@@ -377,8 +392,8 @@ def standardized_bp_scale(beat_period):
 
 
 def standardized_bp_rescale(tempo_params):
-    return (tempo_params['standardized_bp'] * tempo_params['std_bp'] +
-            tempo_params['mean_beat_period'])
+    return (tempo_params['standardized_bp'] * tempo_params['std_bp']
+            + tempo_params['mean_beat_period'])
 
 
 def bpr_scale(beat_period):
@@ -498,8 +513,8 @@ class TimeCodec(object):
 
         tempo_param_name = self.normalization['param_names'][0]
 
-        self.parameter_names = ((tempo_param_name, 'timing', 'log_articulation') +
-                                self.normalization['param_names'][1:])
+        self.parameter_names = ((tempo_param_name, 'timing', 'log_articulation')
+                                + self.normalization['param_names'][1:])
 
         self.tempo_fun = tempo_fun
 
@@ -532,8 +547,8 @@ class TimeCodec(object):
             return_onset_idxs=True)
 
         # Compute equivalent onsets
-        eq_onsets = (np.cumsum(np.r_[0, beat_period[:-1] * np.diff(s_onsets)]) +
-                     performance[unique_onset_idxs[0], 0].mean())
+        eq_onsets = (np.cumsum(np.r_[0, beat_period[:-1] * np.diff(s_onsets)])
+                     + performance[unique_onset_idxs[0], 0].mean())
 
         # Compute tempo parameter
         tempo_params = self.normalization['scale'](beat_period)
@@ -835,3 +850,15 @@ def _monotonize_times(s, mask, strict, deltas=None):
         mask[p] = False
 
         return _monotonize_times(s, mask, strict, deltas)
+
+
+def to_matched_score(note_pairs, beat_map):
+    ms = []
+    for sn, n in note_pairs:
+        sn_on, sn_off = beat_map([sn.start.t, sn.end.t])
+        sn_dur = sn_off - sn_on
+        n_dur = n['sound_off'] - n['note_on']
+        ms.append((sn_on, sn_dur, sn.midi_pitch, n['note_on'], n_dur, n['velocity']))
+    fields = [('onset', 'f4'), ('duration', 'f4'), ('pitch', 'i4'),
+              ('p_onset', 'f4'), ('p_duration', 'f4'), ('velocity', 'i4')]
+    return np.array(ms, dtype=fields)

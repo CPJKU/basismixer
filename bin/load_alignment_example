@@ -71,7 +71,7 @@ def main():
             dyn_codec = pc.OnsetwiseDecompositionDynamicsCodec()
             time_codec = pc.TimeCodec(normalization='standardized_bp')
             perf_codec = pc.PerformanceCodec(time_codec, dyn_codec)
-            targets = perf_codec.encode(matched_score)
+            targets = perf_codec.encode(part, ppart, alignment)
 
             reconstructed_performance = perf_codec.decode(matched_score, targets)
 
