@@ -115,8 +115,10 @@ def get_performance_info(piece, performer, fig, axs):
     plot_targets(fig, axs, targets, onsets=s_onsets, xlabel='Measure number',
                  xticks=measure_times) # , title='{} {}'.format(piece, performer))
 
+    s_times = np.r_[s_onsets, note_pairs[-1][0].end.t]
+    p_times = np.r_[p_onsets, note_pairs[-1][1]['note_off']]
     # score_perf_map = interp1d(s_onsets, p_onsets, bounds_error=False, fill_value='extrapolate')
-    score_perf_map = interp1d(s_onsets, p_onsets, bounds_error=False, fill_value=(p_onsets[0], p_onsets[-1]))
+    score_perf_map = interp1d(s_times, p_times, bounds_error=False, fill_value=(p_times[0], p_times[-1]))
 
     return score_perf_map
 
