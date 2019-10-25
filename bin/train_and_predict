@@ -4,6 +4,24 @@ import numpy as np
 import argparse
 import json
 
+def codec_api_design(xml_fn, match_fn):
+    part = load_musicxml(xml_fn)
+
+    perf_part, alignment = load_match(match_fn)
+
+    targets, snote_ids = perf_codec.encode(part, perf_part, alignment)
+
+    basis = make_basis(part, snote_ids)
+
+    # reconstruction
+    perf_part_rec = perf_codec.decode(part, targets, snote_ids)
+
+    # generation
+    snote_ids = [n.id for n in part.notes_tied]
+
+    perf_part_gen = perf_codec.decode(part, targets, snote_ids)
+
+
 from basismixer import PerformanceCodec, make_basis, BASIS_CONFIG_EXAMPLE
 
 def main():
