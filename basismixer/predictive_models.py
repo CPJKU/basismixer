@@ -6,8 +6,6 @@ from torch import nn
 from torch.utils.data import Dataset, Sampler
 import torch.nn.functional as functional
 
-__all__ = ['PredictiveModel']
-
 
 class PredictiveModel(object):
     """
