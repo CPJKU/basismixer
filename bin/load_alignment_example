@@ -27,13 +27,15 @@ def main():
         if not piece.startswith('Mozart_K331_1st'):
             continue
         part = partitura.load_musicxml(files['xml'].pop())
-        partitura.score.expand_grace_notes(part)
+        partitura.score.expand_grace_notes(part, max_prop=.2)
         partitura.save_midi(part, '/tmp/out.mid')
 
         with open('/tmp/pretty.txt', 'w') as pretty:
             pretty.write(part.pretty())
 
         for match in files['match']:
+            if not 'p12' in match:
+                continue
             print(match)
             # if not 'p01' in match:
             #     continue
@@ -133,11 +135,19 @@ def plot_targets(targets, names, out_fn, onsets=None, xticks=None, title=None):
             tt.append(t)
             vv.append(np.mean([targets[name][j] for j, _ in v]))
 
-        ymax = np.mean(vv) + 2 * np.std(vv)
-        ymin = np.mean(vv) - 2 * np.std(vv)
+        # ymax = np.mean(vv) + 2 * np.std(vv)
+        # ymin = np.mean(vv) - 2 * np.std(vv)
+        ymax = np.mean(vv) + 3 * np.std(targets[name])
+        ymin = np.mean(vv) - 3 * np.std(targets[name])
 
-        axs[i].set_ylim((np.minimum(ymin, np.mean(vv) - 1),
-                         np.maximum(ymax, np.mean(vv) + 1)))
+        axs[i].set_ylim((np.minimum(ymin, np.mean(vv) - .1),
+                         np.maximum(ymax, np.mean(vv) + .1)))
+
+        # ymin = np.min(np.r_[vv, targets[name]])
+        # ymax = np.max(np.r_[vv, targets[name]])
+
+        # axs[i].set_ylim((ymin, ymax))
+
         axs[i].plot(tt, vv)
 
         axs[i].legend(frameon=False, loc=1)
