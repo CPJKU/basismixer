@@ -26,7 +26,10 @@ def main():
         # if not piece.startswith('Mozart_K331_1st-mov'):
         if not piece.startswith('Mozart_K331_1st'):
             continue
-        part = partitura.load_musicxml(files['xml'].pop(), validate=True)
+        part = partitura.load_musicxml(files['xml'].pop(), validate=False)
+        # for n in part.iter_all(partitura.score.GenericNote, include_subclasses=True):
+        #     n.symbolic_duration = None
+        # part.multiply_quarter_durations(10)
         partitura.score.expand_grace_notes(part, max_prop=.2)
         # partitura.save_score_midi(part, '/tmp/out.mid')
 
@@ -39,72 +42,39 @@ def main():
             print(match)
             # if not 'p01' in match:
             #     continue
-            # for n in part.iter_all(partitura.score.GenericNote, include_subclasses=True):
-            #     n.symbolic_duration = None
-            # part.multiply_quarter_durations(2)
-            # print(part.pretty())
-            # return
-            ppart, alignment = partitura.load_match(match)
-
-            # future: return unfold info
-            # _, ppart, alignment, score_variant_info = partitura.load_match(files['match'])
-            # sv = ScoreVariant(part)
-            # for seg_start, seg_end in score_variant_info:
-            #     sv.add_segment(seg_start, seg_end)
-            # part = sv.create_variant_part()
-
-            part_by_id = dict((n.id, n) for n in part.notes_tied)
-            ppart_by_id = dict((n['id'], n) for n in ppart.notes)
-
-            # pair matched score and performance notes
-            note_pairs = [(part_by_id[a['score_id']],  # .split('-')[0]],
-                           ppart_by_id[a['performance_id']])
-                          for a in alignment if a['label'] == 'match']
-
-            note_pairs.sort(key=lambda x: x[0].start.t)
-            note_pairs.sort(key=lambda x: x[1]['note_on'])
-            # for sn, n in note_pairs:
-            #     print(sn, n)
-            matched_score = to_matched_score(note_pairs, part.beat_map)
-            # for a in alignment:
-            #     if 'score_id' in a:
-            #         print(a['score_id'].split('-')[-1])
+            ppart, alignment = partitura.load_match(match, first_note_at_zero=True)
 
             dyn_codec = pc.OnsetwiseDecompositionDynamicsCodec()
             time_codec = pc.TimeCodec(normalization='standardized_bp')
             perf_codec = pc.PerformanceCodec(time_codec, dyn_codec)
-            targets = perf_codec.encode(part, ppart, alignment)
+            targets, snote_ids = perf_codec.encode(part, ppart, alignment)
 
-            # reconstructed_performance = perf_codec.decode(matched_score, targets)
-            rec_perf = perf_codec.decode(
-                part, targets,
-                snote_ids=[n[0].id for n in note_pairs])
+            rec_perf = perf_codec.decode(part, targets, snote_ids=snote_ids)
 
-            reconstructed_performance = rec_perf.note_array
+            # compare reconstructed performance to original performance
+            id_map = dict((a['performance_id'], a['score_id']) for a in alignment
+                          if a['label'] == 'match')
+            note_ids = sorted(id_map.keys())
+            orig_notes = [ppart.notes[i] for i in note_ids]
+            rec_note_dict = dict((n['id'], n) for n in rec_perf.notes)
+            rec_notes = [rec_note_dict[id_map[i]] for i in note_ids]
 
-            assert np.all(matched_score['velocity'] == reconstructed_performance['velocity'])
-            assert np.all(np.isclose(matched_score['p_onset']
-                                     - matched_score['p_onset'].min(),
-                                     reconstructed_performance['p_onset']))
-            # grace_idx = np.where(matched_score['duration'] != 0)[0]
-            grace_idx = np.arange(len(matched_score), dtype=np.int)
+            assert all(n['velocity']==rn['velocity'] for n, rn in zip(orig_notes, rec_notes))
+            onsets = np.array([(n['note_on'], rn['note_on']) for n, rn in zip(orig_notes, rec_notes)])
+            assert np.all(np.isclose(onsets[:, 0], onsets[:, 1]))
+            offsets = np.array([(n['sound_off'], rn['sound_off']) for n, rn in zip(orig_notes, rec_notes)])
+            assert np.all(np.isclose(offsets[:, 0], offsets[:, 1]))
+            # rtol=1e-5, atol=1e-5))
 
-            assert np.all(
-                np.isclose(matched_score['p_duration'],
-                           reconstructed_performance['p_duration'],
-                           rtol=1e-5, atol=1e-5))
-
-            # import pdb
-            # pdb.set_trace()
-            # targets[np.isnan(targets)] = 0
+            # plot targets
             bm = part.beat_map
-            onsets = bm([n.start.t for n, _ in note_pairs])
+            snote_dict = dict((n.id, n) for n in part.notes_tied)
+            # onsets = bm([n.start.t for n, _ in note_pairs])
+            onsets = bm([snote_dict[i].start.t for i in snote_ids])
             measure_times = np.array([(m.start.t, m.number) for m in part.iter_all(partitura.score.Measure)])
             measure_times[:, 0] = bm(measure_times[:, 0])
             np.savetxt('/tmp/out.txt', onsets)
             plot_targets(targets, perf_codec.parameter_names, '/tmp/out.pdf', onsets=onsets, xticks=measure_times, title=match)
-
-    return
 
 
 def plot_targets(targets, names, out_fn, onsets=None, xticks=None, title=None):
@@ -163,18 +133,6 @@ def plot_targets(targets, names, out_fn, onsets=None, xticks=None, title=None):
 
     fig.savefig(out_fn, bbox_inches='tight')
     plt.close(fig)
-
-
-def to_matched_score(note_pairs, beat_map):
-    ms = []
-    for sn, n in note_pairs:
-        sn_on, sn_off = beat_map([sn.start.t, sn.end.t])
-        sn_dur = sn_off - sn_on
-        n_dur = n['sound_off'] - n['note_on']
-        ms.append((sn_on, sn_dur, sn.midi_pitch, n['note_on'], n_dur, n['velocity']))
-    fields = [('onset', 'f4'), ('duration', 'f4'), ('pitch', 'i4'),
-              ('p_onset', 'f4'), ('p_duration', 'f4'), ('velocity', 'i4')]
-    return np.array(ms, dtype=fields)
 
 
 if __name__ == '__main__':

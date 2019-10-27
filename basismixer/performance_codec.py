@@ -47,23 +47,11 @@ class PerformanceCodec(object):
         return_u_onset_idx : bool
             Return the indices of the unique score onsets
         """
+        
+        m_score, snote_ids = to_matched_score(part, ppart, alignment)
 
-        part_by_id = dict((n.id, n) for n in part.notes_tied)
-        ppart_by_id = dict((n['id'], n) for n in ppart.notes)
-
-        # pair matched score and performance notes
-        note_pairs = [(part_by_id[a['score_id']],  # .split('-')[0]],
-                       ppart_by_id[a['performance_id']])
-                      for a in alignment if a['label'] == 'match']
-
-        note_pairs.sort(key=lambda x: x[0].start.t)
-        note_pairs.sort(key=lambda x: x[1]['note_on'])
-        # for sn, n in note_pairs:
-        #     print(sn, n)
-        matched_score = to_matched_score(note_pairs, part.beat_map)
-
-        m_score, resort_idx = sort_matched_score(matched_score)
         # Get time-related parameters
+
         (time_params,
          unique_onset_idxs) = self.time_codec.encode(
             score_onsets=m_score['onset'],
@@ -88,14 +76,15 @@ class PerformanceCodec(object):
         #      for d, t in zip(dynamics_params, time_params)],
         #     dtype=[(pn, 'f4') for pn in self.parameter_names])
         # resort parameters to have the same order as the score
-        parameters = parameters[resort_idx]
 
-        unique_onset_idxs = [resort_idx[uix] for uix in unique_onset_idxs]
+        # parameters = parameters[resort_idx]
+
+        # unique_onset_idxs = [resort_idx[uix] for uix in unique_onset_idxs]
 
         if return_u_onset_idx:
-            return parameters, unique_onset_idxs
+            return parameters, snote_ids, unique_onset_idxs
         else:
-            return parameters
+            return parameters, snote_ids
 
     def decode(self, part, parameters,
                snote_ids=None,
@@ -651,44 +640,6 @@ class TimeCodec(object):
 
 #### Miscellaneous utilities ####
 
-
-def sort_matched_score(matched_score, return_sort_idx=False):
-    """
-    Sort score by score onset and then by pitch
-
-    Parameters
-    ----------
-    matched_score : structured array
-        Matched score
-    return_sort_idx : bool
-        Return indices for sorting the matched_score
-
-    Returns
-    -------
-    m_score : structured array
-        Sorted Matched score
-    resort_idx : numpy array
-        Indices to resort m_score to the original order
-    sort_idx : numpy array
-        Indices to sort `matched_score` into `m_score`.
-        only returned if `return_sort_idx` is True.
-    """
-
-    pitch_sort_idx = np.argsort(matched_score['pitch'], kind='mergesort')
-    onset_sort_idx = np.argsort(matched_score['onset'][pitch_sort_idx],
-                                kind='mergesort')
-
-    sort_idx = np.arange(len(matched_score),
-                         dtype=np.int)[pitch_sort_idx][onset_sort_idx]
-    resort_idx = np.argsort(sort_idx)
-    m_score = matched_score[sort_idx]
-
-    if return_sort_idx:
-        return m_score, resort_idx, sort_idx
-    else:
-        return m_score, resort_idx
-
-
 def get_unique_onset_idxs(onsets, eps=1e-6, return_unique_onsets=False):
     """
     Get unique onsets and their indices.
@@ -879,13 +830,68 @@ def _monotonize_times(s, mask, strict, deltas=None):
         return _monotonize_times(s, mask, strict, deltas)
 
 
-def to_matched_score(note_pairs, beat_map):
+def sort_matched_score(matched_score, return_sort_idx=False):
+    """
+    Sort score by score onset and then by pitch
+
+    Parameters
+    ----------
+    matched_score : structured array
+        Matched score
+    return_sort_idx : bool
+        Return indices for sorting the matched_score
+
+    Returns
+    -------
+    m_score : structured array
+        Sorted Matched score
+    resort_idx : numpy array
+        Indices to resort m_score to the original order
+    sort_idx : numpy array
+        Indices to sort `matched_score` into `m_score`.
+        only returned if `return_sort_idx` is True.
+    """
+
+    pitch_sort_idx = np.argsort(matched_score['pitch'], kind='mergesort')
+    onset_sort_idx = np.argsort(matched_score['onset'][pitch_sort_idx],
+                                kind='mergesort')
+
+    sort_idx = np.arange(len(matched_score),
+                         dtype=np.int)[pitch_sort_idx][onset_sort_idx]
+    resort_idx = np.argsort(sort_idx)
+    m_score = matched_score[sort_idx]
+
+    if return_sort_idx:
+        return m_score, resort_idx, sort_idx
+    else:
+        return m_score, resort_idx
+
+
+def to_matched_score(part, ppart, alignment):
+    part_by_id = dict((n.id, n) for n in part.notes_tied)
+    ppart_by_id = dict((n['id'], n) for n in ppart.notes)
+    
+    # pair matched score and performance notes
+    note_pairs = [(part_by_id[a['score_id']],  # .split('-')[0]],
+                   ppart_by_id[a['performance_id']])
+                  for a in alignment if a['label'] == 'match']
+
     ms = []
-    for sn, n in note_pairs:
+    # sort according to onset (primary) and pitch (secondary)
+    pitch_onset = [(sn.midi_pitch, sn.start.t) for sn, _ in note_pairs]
+    sort_order = np.lexsort(list(zip(*pitch_onset)))
+    beat_map = part.beat_map
+    snote_ids = []
+    for i in sort_order:
+
+        sn, n = note_pairs[i]
         sn_on, sn_off = beat_map([sn.start.t, sn.end.t])
         sn_dur = sn_off - sn_on
         n_dur = n['sound_off'] - n['note_on']
         ms.append((sn_on, sn_dur, sn.midi_pitch, n['note_on'], n_dur, n['velocity']))
+        snote_ids.append(sn.id)
+        
     fields = [('onset', 'f4'), ('duration', 'f4'), ('pitch', 'i4'),
               ('p_onset', 'f4'), ('p_duration', 'f4'), ('velocity', 'i4')]
-    return np.array(ms, dtype=fields)
+
+    return np.array(ms, dtype=fields), snote_ids
