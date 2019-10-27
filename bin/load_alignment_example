@@ -26,16 +26,16 @@ def main():
         # if not piece.startswith('Mozart_K331_1st-mov'):
         if not piece.startswith('Mozart_K331_1st'):
             continue
-        part = partitura.load_musicxml(files['xml'].pop())
+        part = partitura.load_musicxml(files['xml'].pop(), validate=True)
         partitura.score.expand_grace_notes(part, max_prop=.2)
-        partitura.save_midi(part, '/tmp/out.mid')
+        # partitura.save_score_midi(part, '/tmp/out.mid')
 
         with open('/tmp/pretty.txt', 'w') as pretty:
             pretty.write(part.pretty())
 
         for match in files['match']:
-            if not 'p12' in match:
-                continue
+            # if not 'p12' in match:
+            #     continue
             print(match)
             # if not 'p01' in match:
             #     continue
@@ -75,7 +75,12 @@ def main():
             perf_codec = pc.PerformanceCodec(time_codec, dyn_codec)
             targets = perf_codec.encode(part, ppart, alignment)
 
-            reconstructed_performance = perf_codec.decode(matched_score, targets)
+            # reconstructed_performance = perf_codec.decode(matched_score, targets)
+            rec_perf = perf_codec.decode(
+                part, targets,
+                snote_ids=[n[0].id for n in note_pairs])
+
+            reconstructed_performance = rec_perf.note_array
 
             assert np.all(matched_score['velocity'] == reconstructed_performance['velocity'])
             assert np.all(np.isclose(matched_score['p_onset']
@@ -83,8 +88,12 @@ def main():
                                      reconstructed_performance['p_onset']))
             # grace_idx = np.where(matched_score['duration'] != 0)[0]
             grace_idx = np.arange(len(matched_score), dtype=np.int)
-            assert np.all(np.isclose(matched_score['p_duration'][grace_idx],
-                                     reconstructed_performance['p_duration'][grace_idx]))
+
+            assert np.all(
+                np.isclose(matched_score['p_duration'],
+                           reconstructed_performance['p_duration'],
+                           rtol=1e-5, atol=1e-5))
+
             # import pdb
             # pdb.set_trace()
             # targets[np.isnan(targets)] = 0

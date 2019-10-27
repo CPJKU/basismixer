@@ -13,6 +13,8 @@ import numpy.lib.recfunctions as rfn
 from scipy.interpolate import interp1d
 from scipy.misc import derivative
 
+from partitura.performance import PerformedPart
+
 from basismixer.utils import clip
 
 LOGGER = logging.getLogger(__name__)
@@ -95,8 +97,20 @@ class PerformanceCodec(object):
         else:
             return parameters
 
-    def decode(self, score, parameters,
-               sanitize=True, *args, **kwargs):
+    def decode(self, part, parameters,
+               snote_ids=None,
+               sanitize=True, part_id=None,
+               part_name=None,
+               *args, **kwargs):
+
+        if snote_ids is None:
+            snote_ids = [n.id for n in part.notes_tied]
+        score = part.note_array
+
+        snote_idxs = np.array([int(np.where(score['id'] == nid)[0])
+                               for nid in snote_ids])
+
+        score = score[snote_idxs]
 
         m_score, resort_idx, sort_idx = sort_matched_score(score,
                                                            return_sort_idx=True)
@@ -130,10 +144,23 @@ class PerformanceCodec(object):
                    ('p_onset', 'f4'),
                    ('p_duration', 'f4')])
 
-        # TODO (outside of this function)
-        # * Sanitize
+        matched_performance = matched_performance[resort_idx]
+
+        pnotes = []
+
+        for nid, n in zip(snote_ids, matched_performance):
+            pnotes.append(dict(id=nid,
+                               midi_pitch=n['pitch'],
+                               note_on=n['p_onset'],
+                               note_off=n['p_onset'] + n['p_duration'],
+                               sound_off=n['p_onset'] + n['p_duration'],
+                               velocity=n['velocity']))
+
+        ppart = PerformedPart(id=part_id,
+                              part_name=part_name,
+                              notes=pnotes)
         # * rescale according to default values
-        return matched_performance[resort_idx]
+        return ppart
 
 #### Methods for Time-related parameters ####
 
@@ -513,8 +540,8 @@ class TimeCodec(object):
 
         tempo_param_name = self.normalization['param_names'][0]
 
-        self.parameter_names = ((tempo_param_name, 'timing', 'log_articulation')
-                                + self.normalization['param_names'][1:])
+        self.parameter_names = ((tempo_param_name, 'timing', 'log_articulation') +
+                                self.normalization['param_names'][1:])
 
         self.tempo_fun = tempo_fun
 
@@ -547,8 +574,8 @@ class TimeCodec(object):
             return_onset_idxs=True)
 
         # Compute equivalent onsets
-        eq_onsets = (np.cumsum(np.r_[0, beat_period[:-1] * np.diff(s_onsets)])
-                     + performance[unique_onset_idxs[0], 0].mean())
+        eq_onsets = (np.cumsum(np.r_[0, beat_period[:-1] * np.diff(s_onsets)]) +
+                     performance[unique_onset_idxs[0], 0].mean())
 
         # Compute tempo parameter
         tempo_params = self.normalization['scale'](beat_period)
