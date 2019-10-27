@@ -51,7 +51,6 @@ class PerformanceCodec(object):
         m_score, snote_ids = to_matched_score(part, ppart, alignment)
 
         # Get time-related parameters
-
         (time_params,
          unique_onset_idxs) = self.time_codec.encode(
             score_onsets=m_score['onset'],
@@ -71,15 +70,6 @@ class PerformanceCodec(object):
         # Concatenate parameters into a single matrix
         parameters = rfn.merge_arrays([time_params, dynamics_params],
                                       flatten=True, usemask=False)
-        # parameters = np.array(
-        #     [tuple(d) + tuple(t)
-        #      for d, t in zip(dynamics_params, time_params)],
-        #     dtype=[(pn, 'f4') for pn in self.parameter_names])
-        # resort parameters to have the same order as the score
-
-        # parameters = parameters[resort_idx]
-
-        # unique_onset_idxs = [resort_idx[uix] for uix in unique_onset_idxs]
 
         if return_u_onset_idx:
             return parameters, snote_ids, unique_onset_idxs
@@ -827,7 +817,7 @@ def to_matched_score(part, ppart, alignment):
     ppart_by_id = dict((n['id'], n) for n in ppart.notes)
     
     # pair matched score and performance notes
-    note_pairs = [(part_by_id[a['score_id']],  # .split('-')[0]],
+    note_pairs = [(part_by_id[a['score_id']],
                    ppart_by_id[a['performance_id']])
                   for a in alignment if a['label'] == 'match']
 
@@ -840,7 +830,7 @@ def to_matched_score(part, ppart, alignment):
     for i in sort_order:
 
         sn, n = note_pairs[i]
-        sn_on, sn_off = beat_map([sn.start.t, sn.end.t])
+        sn_on, sn_off = beat_map([sn.start.t, sn.end_tied.t])
         sn_dur = sn_off - sn_on
         n_dur = n['sound_off'] - n['note_on']
         ms.append((sn_on, sn_dur, sn.midi_pitch, n['note_on'], n_dur, n['velocity']))
