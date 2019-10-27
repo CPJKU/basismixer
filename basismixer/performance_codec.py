@@ -32,8 +32,8 @@ class PerformanceCodec(object):
 
         self.dynamics_codec = dynamics_codec
 
-        self.parameter_names = (self.dynamics_codec.parameter_names +
-                                self.time_codec.parameter_names)
+        self.parameter_names = (self.dynamics_codec.parameter_names
+                                + self.time_codec.parameter_names)
         self.default_values = default_values
 
     def encode(self, part, ppart, alignment, return_u_onset_idx=False):
@@ -47,7 +47,7 @@ class PerformanceCodec(object):
         return_u_onset_idx : bool
             Return the indices of the unique score onsets
         """
-
+        
         m_score, snote_ids = to_matched_score(part, ppart, alignment)
 
         # Get time-related parameters
@@ -92,55 +92,56 @@ class PerformanceCodec(object):
                part_name=None,
                *args, **kwargs):
 
+        snotes = part.notes_tied
+
         if snote_ids is None:
-            snote_ids = [n.id for n in part.notes_tied]
-        score = part.note_array
+            snote_ids = [n.id for n in snotes]
 
-        snote_idxs = np.array([int(np.where(score['id'] == nid)[0])
-                               for nid in snote_ids])
+        # sort
+        snote_dict = dict((n.id, n) for n in snotes)
+        snote_info = np.array([(snote_dict[i].midi_pitch, snote_dict[i].start.t, snote_dict[i].end_tied.t)
+                               for i in snote_ids],
+                              dtype=[('pitch', 'i4'), ('onset', 'f4'), ('offset', 'f4')])
+        sort_idx = np.lexsort((snote_info['pitch'], snote_info['onset']))
 
-        score = score[snote_idxs]
-
-        m_score, resort_idx, sort_idx = sort_matched_score(score,
-                                                           return_sort_idx=True)
-        pitches = m_score['pitch']
+        bm = part.beat_map
+        onsets = bm(snote_info['onset'])[sort_idx]
+        durations = (bm(snote_info['offset'])-bm(snote_info['onset']))[sort_idx]
+        pitches = snote_info['pitch'][sort_idx]
 
         clip(pitches, 1, 127)
 
         dynamics_params = parameters[list(self.dynamics_codec.parameter_names)][sort_idx]
         time_params = parameters[list(self.time_codec.parameter_names)][sort_idx]
 
+
         onsets_durations = self.time_codec.decode(
-            score_onsets=m_score['onset'],
-            score_durations=m_score['duration'],
+            score_onsets=onsets,
+            score_durations=durations,
             parameters=time_params, *args, **kwargs)
 
         velocities = self.dynamics_codec.decode(
-            pitches=m_score['pitch'],
-            score_onsets=m_score['onset'],
-            score_durations=m_score['duration'],
+            pitches=pitches,
+            score_onsets=onsets,
+            score_durations=durations,
             parameters=dynamics_params)
 
         clip(velocities, 1, 127)
 
-        matched_performance = np.array(
-            [(n['pitch'], n['onset'], n['duration'], v, od[0], od[1], nid)
-             for n, v, od, nid in zip(m_score, velocities, onsets_durations, snote_ids)],
-            dtype=[('pitch', 'i4'),
-                   ('onset', 'f4'),
-                   ('duration', 'f4'),
-                   ('velocity', 'i4'),
-                   ('p_onset', 'f4'),
-                   ('p_duration', 'f4'),
-                   ('id', 'U256')])
+        notes = []
+        for nid, (onset, duration), velocity in zip(snote_ids, onsets_durations, velocities):
+            notes.append(dict(id=nid,
+                              note_on=onset,
+                              note_off=onset+duration,
+                              sound_off=onset+duration,
+                              velocity=velocity))
 
-        matched_performance = matched_performance[resort_idx]
-
-        ppart = PerformedPart.from_note_array(id=part_id,
-                                              part_name=part_name,
-                                              note_array=matched_performance)
+        ppart = PerformedPart(id=part_id,
+                              part_name=part_name,
+                              notes=notes)
         # * rescale according to default values
         return ppart
+
 
 #### Methods for Time-related parameters ####
 
@@ -399,8 +400,8 @@ def standardized_bp_scale(beat_period):
 
 
 def standardized_bp_rescale(tempo_params):
-    return (tempo_params['standardized_bp'] * tempo_params['std_bp'] +
-            tempo_params['mean_beat_period'])
+    return (tempo_params['standardized_bp'] * tempo_params['std_bp']
+            + tempo_params['mean_beat_period'])
 
 
 def bpr_scale(beat_period):
@@ -520,8 +521,8 @@ class TimeCodec(object):
 
         tempo_param_name = self.normalization['param_names'][0]
 
-        self.parameter_names = ((tempo_param_name, 'timing', 'log_articulation')
-                                + self.normalization['param_names'][1:])
+        self.parameter_names = ((tempo_param_name, 'timing', 'log_articulation') +
+                                self.normalization['param_names'][1:])
 
         self.tempo_fun = tempo_fun
 
@@ -554,8 +555,8 @@ class TimeCodec(object):
             return_onset_idxs=True)
 
         # Compute equivalent onsets
-        eq_onsets = (np.cumsum(np.r_[0, beat_period[:-1] * np.diff(s_onsets)])
-                     + performance[unique_onset_idxs[0], 0].mean())
+        eq_onsets = (np.cumsum(np.r_[0, beat_period[:-1] * np.diff(s_onsets)]) +
+                     performance[unique_onset_idxs[0], 0].mean())
 
         # Compute tempo parameter
         tempo_params = self.normalization['scale'](beat_period)
@@ -630,7 +631,6 @@ class TimeCodec(object):
         return performance
 
 #### Miscellaneous utilities ####
-
 
 def get_unique_onset_idxs(onsets, eps=1e-6, return_unique_onsets=False):
     """
@@ -822,47 +822,10 @@ def _monotonize_times(s, mask, strict, deltas=None):
         return _monotonize_times(s, mask, strict, deltas)
 
 
-def sort_matched_score(matched_score, return_sort_idx=False):
-    """
-    Sort score by score onset and then by pitch
-
-    Parameters
-    ----------
-    matched_score : structured array
-        Matched score
-    return_sort_idx : bool
-        Return indices for sorting the matched_score
-
-    Returns
-    -------
-    m_score : structured array
-        Sorted Matched score
-    resort_idx : numpy array
-        Indices to resort m_score to the original order
-    sort_idx : numpy array
-        Indices to sort `matched_score` into `m_score`.
-        only returned if `return_sort_idx` is True.
-    """
-
-    pitch_sort_idx = np.argsort(matched_score['pitch'], kind='mergesort')
-    onset_sort_idx = np.argsort(matched_score['onset'][pitch_sort_idx],
-                                kind='mergesort')
-
-    sort_idx = np.arange(len(matched_score),
-                         dtype=np.int)[pitch_sort_idx][onset_sort_idx]
-    resort_idx = np.argsort(sort_idx)
-    m_score = matched_score[sort_idx]
-
-    if return_sort_idx:
-        return m_score, resort_idx, sort_idx
-    else:
-        return m_score, resort_idx
-
-
 def to_matched_score(part, ppart, alignment):
     part_by_id = dict((n.id, n) for n in part.notes_tied)
     ppart_by_id = dict((n['id'], n) for n in ppart.notes)
-
+    
     # pair matched score and performance notes
     note_pairs = [(part_by_id[a['score_id']],  # .split('-')[0]],
                    ppart_by_id[a['performance_id']])
@@ -882,7 +845,7 @@ def to_matched_score(part, ppart, alignment):
         n_dur = n['sound_off'] - n['note_on']
         ms.append((sn_on, sn_dur, sn.midi_pitch, n['note_on'], n_dur, n['velocity']))
         snote_ids.append(sn.id)
-
+        
     fields = [('onset', 'f4'), ('duration', 'f4'), ('pitch', 'i4'),
               ('p_onset', 'f4'), ('p_duration', 'f4'), ('velocity', 'i4')]
 
