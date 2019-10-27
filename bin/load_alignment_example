@@ -24,26 +24,25 @@ def main():
 
     for piece, files in pair_files(folders).items():
         # if not piece.startswith('Mozart_K331_1st-mov'):
-        if not piece.startswith('Mozart_K331_1st'):
-            continue
+        # if not piece.startswith('Mozart_K331_1st'):
+        # if not piece.startswith('Chopin_op38'):
+        #     continue
         part = partitura.load_musicxml(files['xml'].pop(), validate=False)
         # for n in part.iter_all(partitura.score.GenericNote, include_subclasses=True):
         #     n.symbolic_duration = None
         # part.multiply_quarter_durations(10)
         partitura.score.expand_grace_notes(part, max_prop=.2)
-        # partitura.save_score_midi(part, '/tmp/out.mid')
 
-        with open('/tmp/pretty.txt', 'w') as pretty:
-            pretty.write(part.pretty())
+        # with open('/tmp/pretty.txt', 'w') as pretty:
+        #     pretty.write(part.pretty())
 
         for match in files['match']:
-            # if not 'p12' in match:
+            # if not 'p03' in match:
             #     continue
             print(match)
-            # if not 'p01' in match:
-            #     continue
-            ppart, alignment = partitura.load_match(match, first_note_at_zero=True)
 
+            ppart, alignment = partitura.load_match(match, first_note_at_zero=True)
+            
             dyn_codec = pc.OnsetwiseDecompositionDynamicsCodec()
             time_codec = pc.TimeCodec(normalization='standardized_bp')
             perf_codec = pc.PerformanceCodec(time_codec, dyn_codec)
@@ -52,20 +51,44 @@ def main():
             rec_perf = perf_codec.decode(part, targets, snote_ids=snote_ids)
 
             # compare reconstructed performance to original performance
-            id_map = dict((a['performance_id'], a['score_id']) for a in alignment
+            id_map = dict((a['score_id'], a['performance_id'])
+                          for a in alignment
                           if a['label'] == 'match')
             note_ids = sorted(id_map.keys())
             orig_note_dict = dict((n['id'], n) for n in ppart.notes)
-            orig_notes = [orig_note_dict[i] for i in note_ids]
+            orig_notes = [orig_note_dict[id_map[i]] for i in snote_ids]
             rec_note_dict = dict((n['id'], n) for n in rec_perf.notes)
-            rec_notes = [rec_note_dict[id_map[i]] for i in note_ids]
+            rec_notes = [rec_note_dict[i] for i in snote_ids]
 
-            assert all(n['velocity']==rn['velocity'] for n, rn in zip(orig_notes, rec_notes))
-            onsets = np.array([(n['note_on'], rn['note_on']) for n, rn in zip(orig_notes, rec_notes)])
-            assert np.all(np.isclose(onsets[:, 0], onsets[:, 1]))
-            offsets = np.array([(n['sound_off'], rn['sound_off']) for n, rn in zip(orig_notes, rec_notes)])
-            assert np.all(np.isclose(offsets[:, 0], offsets[:, 1]))
-            # rtol=1e-5, atol=1e-5))
+            rtol = 1e-5
+            atol = 1e-5
+            velocities = np.array([(n['velocity'], rn['velocity'])
+                                   for n, rn in zip(orig_notes, rec_notes)])
+            if not all(np.isclose(velocities[:, 0], velocities[:, 1],
+                                  rtol=rtol, atol=atol)):
+                plot_reconstructed_targets('velocities', velocities)
+
+            onsets = np.array([(n['note_on'], rn['note_on'])
+                               for n, rn in zip(orig_notes, rec_notes)])
+            # original matched performance notes may not start at 0 under all
+            # circumstances (e.g. when the first performance note is not matched
+            # to a score note). Therefore we shift the times by delta to make
+            # sure the original matched performance notes start at zero.
+            delta = np.min(onsets[:, 0])
+            onsets[:, 0] -= delta
+
+            if not np.all(np.isclose(onsets[:, 0], onsets[:, 1],
+                                     rtol=rtol, atol=atol)):
+                plot_reconstructed_targets('onsets', onsets)
+
+            offsets = np.array([(n['sound_off'], rn['sound_off'])
+                                for n, rn in zip(orig_notes, rec_notes)])
+            offsets[:, 0] -= delta
+
+            if not np.all(np.isclose(offsets[:, 0], offsets[:, 1],
+                                     rtol=rtol, atol=atol)):
+                plot_reconstructed_targets('offsets', offsets)
+
 
             # plot targets
             bm = part.beat_map
@@ -77,6 +100,15 @@ def main():
             np.savetxt('/tmp/out.txt', onsets)
             plot_targets(targets, perf_codec.parameter_names, '/tmp/out.pdf', onsets=onsets, xticks=measure_times, title=match)
 
+
+def plot_reconstructed_targets(title, values):
+    plt.clf()
+    plt.title(title)
+    plt.plot(values[:, 0], label='orig')
+    plt.plot(values[:, 1], label='rec')
+    plt.grid()
+    plt.legend()
+    plt.show()
 
 def plot_targets(targets, names, out_fn, onsets=None, xticks=None, title=None):
 
