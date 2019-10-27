@@ -32,8 +32,8 @@ class PerformanceCodec(object):
 
         self.dynamics_codec = dynamics_codec
 
-        self.parameter_names = (self.dynamics_codec.parameter_names
-                                + self.time_codec.parameter_names)
+        self.parameter_names = (self.dynamics_codec.parameter_names +
+                                self.time_codec.parameter_names)
         self.default_values = default_values
 
     def encode(self, part, ppart, alignment, return_u_onset_idx=False):
@@ -47,7 +47,7 @@ class PerformanceCodec(object):
         return_u_onset_idx : bool
             Return the indices of the unique score onsets
         """
-        
+
         m_score, snote_ids = to_matched_score(part, ppart, alignment)
 
         # Get time-related parameters
@@ -124,30 +124,21 @@ class PerformanceCodec(object):
         clip(velocities, 1, 127)
 
         matched_performance = np.array(
-            [(n['pitch'], n['onset'], n['duration'], v, od[0], od[1])
-             for n, v, od in zip(m_score, velocities, onsets_durations)],
+            [(n['pitch'], n['onset'], n['duration'], v, od[0], od[1], nid)
+             for n, v, od, nid in zip(m_score, velocities, onsets_durations, snote_ids)],
             dtype=[('pitch', 'i4'),
                    ('onset', 'f4'),
                    ('duration', 'f4'),
                    ('velocity', 'i4'),
                    ('p_onset', 'f4'),
-                   ('p_duration', 'f4')])
+                   ('p_duration', 'f4'),
+                   ('id', 'U256')])
 
         matched_performance = matched_performance[resort_idx]
 
-        pnotes = []
-
-        for nid, n in zip(snote_ids, matched_performance):
-            pnotes.append(dict(id=nid,
-                               midi_pitch=n['pitch'],
-                               note_on=n['p_onset'],
-                               note_off=n['p_onset'] + n['p_duration'],
-                               sound_off=n['p_onset'] + n['p_duration'],
-                               velocity=n['velocity']))
-
-        ppart = PerformedPart(id=part_id,
-                              part_name=part_name,
-                              notes=pnotes)
+        ppart = PerformedPart.from_note_array(id=part_id,
+                                              part_name=part_name,
+                                              note_array=matched_performance)
         # * rescale according to default values
         return ppart
 
@@ -408,8 +399,8 @@ def standardized_bp_scale(beat_period):
 
 
 def standardized_bp_rescale(tempo_params):
-    return (tempo_params['standardized_bp'] * tempo_params['std_bp']
-            + tempo_params['mean_beat_period'])
+    return (tempo_params['standardized_bp'] * tempo_params['std_bp'] +
+            tempo_params['mean_beat_period'])
 
 
 def bpr_scale(beat_period):
@@ -529,8 +520,8 @@ class TimeCodec(object):
 
         tempo_param_name = self.normalization['param_names'][0]
 
-        self.parameter_names = ((tempo_param_name, 'timing', 'log_articulation') +
-                                self.normalization['param_names'][1:])
+        self.parameter_names = ((tempo_param_name, 'timing', 'log_articulation')
+                                + self.normalization['param_names'][1:])
 
         self.tempo_fun = tempo_fun
 
@@ -563,8 +554,8 @@ class TimeCodec(object):
             return_onset_idxs=True)
 
         # Compute equivalent onsets
-        eq_onsets = (np.cumsum(np.r_[0, beat_period[:-1] * np.diff(s_onsets)]) +
-                     performance[unique_onset_idxs[0], 0].mean())
+        eq_onsets = (np.cumsum(np.r_[0, beat_period[:-1] * np.diff(s_onsets)])
+                     + performance[unique_onset_idxs[0], 0].mean())
 
         # Compute tempo parameter
         tempo_params = self.normalization['scale'](beat_period)
@@ -639,6 +630,7 @@ class TimeCodec(object):
         return performance
 
 #### Miscellaneous utilities ####
+
 
 def get_unique_onset_idxs(onsets, eps=1e-6, return_unique_onsets=False):
     """
@@ -870,7 +862,7 @@ def sort_matched_score(matched_score, return_sort_idx=False):
 def to_matched_score(part, ppart, alignment):
     part_by_id = dict((n.id, n) for n in part.notes_tied)
     ppart_by_id = dict((n['id'], n) for n in ppart.notes)
-    
+
     # pair matched score and performance notes
     note_pairs = [(part_by_id[a['score_id']],  # .split('-')[0]],
                    ppart_by_id[a['performance_id']])
@@ -890,7 +882,7 @@ def to_matched_score(part, ppart, alignment):
         n_dur = n['sound_off'] - n['note_on']
         ms.append((sn_on, sn_dur, sn.midi_pitch, n['note_on'], n_dur, n['velocity']))
         snote_ids.append(sn.id)
-        
+
     fields = [('onset', 'f4'), ('duration', 'f4'), ('pitch', 'i4'),
               ('p_onset', 'f4'), ('p_duration', 'f4'), ('velocity', 'i4')]
 
