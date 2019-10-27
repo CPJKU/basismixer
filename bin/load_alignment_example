@@ -55,7 +55,8 @@ def main():
             id_map = dict((a['performance_id'], a['score_id']) for a in alignment
                           if a['label'] == 'match')
             note_ids = sorted(id_map.keys())
-            orig_notes = [ppart.notes[i] for i in note_ids]
+            orig_note_dict = dict((n['id'], n) for n in ppart.notes)
+            orig_notes = [orig_note_dict[i] for i in note_ids]
             rec_note_dict = dict((n['id'], n) for n in rec_perf.notes)
             rec_notes = [rec_note_dict[id_map[i]] for i in note_ids]
 
