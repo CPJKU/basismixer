@@ -60,51 +60,35 @@ def main():
             rec_note_dict = dict((n['id'], n) for n in rec_perf.notes)
             rec_notes = [rec_note_dict[i] for i in snote_ids]
 
-
             rtol = 1e-5
             atol = 1e-5
             velocities = np.array([(n['velocity'], rn['velocity'])
                                    for n, rn in zip(orig_notes, rec_notes)])
             if not all(np.isclose(velocities[:, 0], velocities[:, 1],
                                   rtol=rtol, atol=atol)):
-                plt.clf()
-                plt.title('velocities')
-                plt.plot(velocities[:, 0], label='orig')
-                plt.plot(velocities[:, 1], label='rec')
-                plt.grid()
-                plt.legend()
-                plt.show()
+                plot_reconstructed_targets('velocities', velocities)
+
             onsets = np.array([(n['note_on'], rn['note_on'])
                                for n, rn in zip(orig_notes, rec_notes)])
-
             # original matched performance notes may not start at 0 under all
             # circumstances (e.g. when the first performance note is not matched
             # to a score note). Therefore we shift the times by delta to make
             # sure the original matched performance notes start at zero.
             delta = np.min(onsets[:, 0])
             onsets[:, 0] -= delta
+
             if not np.all(np.isclose(onsets[:, 0], onsets[:, 1],
                                      rtol=rtol, atol=atol)):
-                plt.clf()
-                plt.title('onsets')
-                plt.plot(onsets[:, 0], label='orig')
-                plt.plot(onsets[:, 1], label='rec')
-                plt.grid()
-                plt.legend()
-                plt.show()
+                plot_reconstructed_targets('onsets', onsets)
+
             offsets = np.array([(n['sound_off'], rn['sound_off'])
                                 for n, rn in zip(orig_notes, rec_notes)])
             offsets[:, 0] -= delta
+
             if not np.all(np.isclose(offsets[:, 0], offsets[:, 1],
                                      rtol=rtol, atol=atol)):
-                plt.clf()
-                plt.title('offsets')
-                plt.plot(offsets[:, 0], label='orig')
-                plt.plot(offsets[:, 1], label='rec')
-                plt.grid()
-                plt.legend()
-                plt.show()
-                # import ipdb; ipdb.set_trace()
+                plot_reconstructed_targets('offsets', offsets)
+
 
             # plot targets
             bm = part.beat_map
@@ -116,6 +100,15 @@ def main():
             np.savetxt('/tmp/out.txt', onsets)
             plot_targets(targets, perf_codec.parameter_names, '/tmp/out.pdf', onsets=onsets, xticks=measure_times, title=match)
 
+
+def plot_reconstructed_targets(title, values):
+    plt.clf()
+    plt.title(title)
+    plt.plot(values[:, 0], label='orig')
+    plt.plot(values[:, 1], label='rec')
+    plt.grid()
+    plt.legend()
+    plt.show()
 
 def plot_targets(targets, names, out_fn, onsets=None, xticks=None, title=None):
 
