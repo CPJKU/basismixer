@@ -2,8 +2,104 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 import torch
-
+from collections import defaultdict
 from torch import nn
+
+
+class FullPredictiveModel(object):
+    """Meta model for predicting an expressive performance
+    """
+
+    def __init__(self, models, input_names, output_names,
+                 default_values={},
+                 overlapping_output_strategy='FIFO'):
+
+        self.models = models
+        self.input_names = np.array(input_names)
+        self.output_names = np.array(output_names)
+        self.default_values = default_values
+        self.overlapping_output_strategy = overlapping_output_strategy
+
+        # check that there is a default value for each expressive parameter
+        if len(set(default_values.keys()).difference(set(self.output_names))) != 0:
+            raise KeyError('`default_values` must contain a value for each '
+                           'parameter in `output_names`.')
+
+        # indices of the basis functions for each model
+        self.model_bf_idxs = []
+        for model in self.models:
+            bf_idxs = np.array([int(np.where(self.input_names == bf)[0])
+                                for bf in model.input_names])
+            self.model_bf_idxs.append(bf_idxs)
+
+        # indices of the models for each parameter
+        self.model_param_idxs = defaultdict(list)
+        for pn in self.output_names:
+            for i, model in enumerate(self.models):
+                if pn in model.output_names:
+                    self.model_param_idxs[pn].append(i)
+
+    def predict(self, x, score_onsets):
+
+        if x.ndim != 2:
+            raise ValueError('The inputs should be a 2D array')
+
+        _predictions = []
+
+        for bf_idxs, model in zip(self.model_bf_idxs, self.models):
+            model_input = x[:, bf_idxs]
+
+            if model.input_type == 'onsetwise':
+                model_input = aggregate_onsetwise_bfs(model_input, score_onsets)
+
+            preds = model.predict(model_input)
+
+            if model.input_type == 'onsetwise':
+                preds = expand_onsetwise_preds(preds, score_onsets)
+
+            _predictions.append(preds)
+
+        predictions = np.zeros(len(score_onsets),
+                               dtype=[(pn, 'f4') for pn in self.output_names])
+
+        for pn in self.output_names:
+            model_idxs = self.model_param_idxs[pn]
+            if len(model_idxs) > 0:
+                if self.overlapping_output_strategy == 'FIFO':
+                    predictions[pn] = _predictions[model_idxs[0]][pn]
+
+                elif self.overlapping_output_strategy == 'mean':
+                    predictions[pn] = np.mean(
+                        np.column_stack([_predictions[mix][pn] for mix in model_idxs]),
+                        axis=1)
+            else:
+                predictions[pn] = np.ones(len(score_onsets)) * self.default_values[pn]
+        return predictions
+
+
+def aggregate_onsetwise_bfs(notewise_inputs, score_onsets):
+    unique_score_onsets = np.unique(score_onsets)
+    unique_onset_idxs = [np.where(score_onsets == u)[0]
+                         for u in unique_score_onsets]
+
+    onsetwise_notewise_inputs = np.zeros(len(unique_score_onsets),
+                                         notewise_inputs.shape[1])
+
+    for i, uix in enumerate(unique_onset_idxs):
+        onsetwise_notewise_inputs[i] = notewise_inputs[uix].mean(0)
+
+    return onsetwise_notewise_inputs, unique_onset_idxs
+
+
+def expand_onsetwise_preds(onsetwise_predictions, unique_onset_idxs):
+
+    n_notes = sum([sum(uix) for uix in unique_onset_idxs])
+    notewise_predictions = np.zeros(n_notes, dtype=onsetwise_predictions.dtype)
+
+    for i, uix in enumerate(unique_onset_idxs):
+        notewise_predictions[uix] = onsetwise_predictions[[i]]
+
+    return notewise_predictions
 
 
 class PredictiveModel(ABC):
@@ -41,8 +137,12 @@ class PredictiveModel(ABC):
         if do_reshape:
             x = x[np.newaxis]
 
+        if isinstance(self, nn.Module):
+            mx = torch.tensor(x).type(self.dtype).to(self.device)
+        else:
+            mx = x
         # model predictions
-        predictions = self(x)
+        predictions = self(mx)
 
         # predictions as numpy array
         if isinstance(predictions, torch.Tensor):
@@ -78,7 +178,9 @@ class RecurrentModel(nn.Module, PredictiveModel):
                  batch_first=True,
                  input_names=None,
                  output_names=None,
-                 input_type=None):
+                 input_type=None,
+                 dtype=torch.float32,
+                 device=None):
         nn.Module.__init__(self)
         PredictiveModel.__init__(self,
                                  input_names=input_names,
@@ -102,6 +204,18 @@ class RecurrentModel(nn.Module, PredictiveModel):
 
         if self.output_names is None:
             self.output_names = [str(i) for i in range(self.output_size)]
+
+        self.dtype = dtype
+        self.device = device if device is not None else torch.device('cpu')
+
+    @property
+    def dtype(self):
+        return self._dtype
+
+    @dtype.setter
+    def dtype(self, dtype):
+        self._dtype = dtype
+        self.type(dtype)
 
     def init_hidden(self, batch_size):
         return torch.zeros(self.n_layers, batch_size, self.recurrent_size)
