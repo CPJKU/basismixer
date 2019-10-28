@@ -219,7 +219,6 @@ def tempo_by_average(score_onsets, performed_onsets,
     score_onsets = np.array(score_onsets).astype(np.float64, copy=False)
     performed_onsets = np.array(performed_onsets).astype(np.float64, copy=False)
     score_durations = np.array(score_durations).astype(np.float64, copy=False)
-
     performed_durations = np.array(performed_durations).astype(np.float64, copy=False)
 
     # Get unique onsets if no provided
@@ -252,7 +251,7 @@ def tempo_by_average(score_onsets, performed_onsets,
     s_iois = np.diff(unique_s_onsets_mt)
     beat_period = perf_iois / s_iois
 
-    tempo_fun = interp1d(unique_s_onsets_mt[:-1], beat_period, kind='linear',
+    tempo_fun = interp1d(unique_s_onsets_mt[:-1], beat_period, kind='zero',
                          bounds_error=False,
                          fill_value=(beat_period[0], beat_period[-1]))
 
@@ -260,13 +259,12 @@ def tempo_by_average(score_onsets, performed_onsets,
         input_onsets = unique_s_onsets[:-1]
 
     tempo_curve = tempo_fun(input_onsets)
-
-    output = [tempo_curve, input_onsets]
-
+    
     if return_onset_idxs:
-        output.append(unique_onset_idxs)
+        return tempo_curve, input_onsets, unique_onset_idxs
+    else:
+        return tempo_curve, input_onsets
 
-    return output
 
 
 def tempo_by_derivative(score_onsets, performed_onsets,
