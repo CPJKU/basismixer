@@ -152,7 +152,86 @@ class PredictiveModel(ABC):
         return output
 
 
+class FeedForwardModel(nn.Module, PredictiveModel):
+    """Simple Dense FFNN
+    """
+
+    def __init__(self,
+                 input_size, output_size,
+                 hidden_size, dropout=0.0,
+                 nonlinearity=nn.ReLU(),
+                 input_names=None,
+                 output_names=None,
+                 input_type=None,
+                 dtype=torch.float32,
+                 device=None):
+        nn.Module.__init__(self)
+        PredictiveModel.__init__(self,
+                                 input_names=input_names,
+                                 output_names=output_names,
+                                 is_rnn=False,
+                                 input_type=input_type)
+
+        self.input_size = input_size
+        if not isinstance(hidden_size, (list, tuple)):
+            hidden_size = [hidden_size]
+        self.hidden_size = hidden_size
+        self.output_size = output_size
+
+        if not isinstance(dropout, (list, tuple)):
+            self.dropout = len(self.hidden_size) * [dropout]
+        else:
+            if len(dropout) != len(self.hidden_size):
+                raise ValueError('`dropout` should be the same length '
+                                 'as `hidden_size`.')
+
+        if not isinstance(nonlinearity, (list, tuple)):
+            self.nonlinearity = len(self.hidden_size) * [nonlinearity]
+        else:
+            if len(nonlinearity) != len(self.hidden_size):
+                raise ValueError('`nonlinearity` should be the same length ',
+                                 'as `hidden_size`.')
+
+        if self.output_names is None:
+            self.output_names = [str(i) for i in range(self.output_size)]
+
+        self.dtype = dtype
+        self.device = device if device is not None else torch.device('cpu')
+
+        in_features = input_size
+        hidden_layers = []
+        for hs, p, nl in zip(self.hidden_size, self.dropout, self.nonlinearity):
+            hidden_layers.append(nn.Linear(in_features, hs))
+            in_features = hs
+            hidden_layers.append(nl)
+
+            if p != 0:
+                hidden_layers.append(nn.Dropout(p))
+
+        self.hidden_layers = nn.Sequential(*hidden_layers)
+
+        self.output = nn.Linear(in_features=self.hidden_size[-1],
+                                out_features=self.output_size)
+
+    @property
+    def dtype(self):
+        return self._dtype
+
+    @dtype.setter
+    def dtype(self, dtype):
+        self._dtype = dtype
+        self.type(dtype)
+
+    def forward(self, x):
+        h = self.hidden_layers(x)
+        output = self.output(h)
+        return output
+
+
 class RecurrentModel(nn.Module, PredictiveModel):
+    """Simple RNN
+    """
+
     def __init__(self,
                  input_size, output_size,
                  recurrent_size, hidden_size,
@@ -202,17 +281,17 @@ class RecurrentModel(nn.Module, PredictiveModel):
     def init_hidden(self, batch_size):
         return torch.zeros(self.n_layers, batch_size, self.recurrent_size)
 
-    def forward(self, x, origin_len=None):
+    def forward(self, x, original_len=None):
         batch_size = x.size(0)
         seq_len = x.size(1)
         h0 = self.init_hidden(batch_size).type(x.type())
 
         # pack_padded_sequence() prevents rnns to process padded data
-        if origin_len is not None:
-            origin_len = torch.as_tensor(
-                origin_len, dtype=torch.int64, device='cpu')
+        if original_len is not None:
+            original_len = torch.as_tensor(
+                original_len, dtype=torch.int64, device='cpu')
             x = nn.utils.rnn.pack_padded_sequence(
-                x, origin_len, batch_first=True, enforce_sorted=False)
+                x, original_len, batch_first=True, enforce_sorted=False)
 
         output, h = self.rnn(x, h0)
 
