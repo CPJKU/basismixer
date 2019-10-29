@@ -61,11 +61,11 @@ def odd_even_basis(part):
 def polynomial_pitch_basis(part):
 
     basis_names = ['pitch', 'pitch^2', 'pitch^3']
-
+    max_pitch = 127
     pitches = np.array([n.midi_pitch for n in part.notes_tied]).astype(np.float)
-    W = np.column_stack((pitches/127,
-                         pitches**2/127**2,
-                         pitches**3/127**3))
+    W = np.column_stack((pitches / max_pitch,
+                         pitches**2 / max_pitch**2,
+                         pitches**3/ max_pitch**3))
     
     return normalize(W), basis_names
 

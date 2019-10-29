@@ -2,14 +2,9 @@
 
 import threading
 from functools import partial
-import re
 import time
 import os
-import io
-from urllib.request import urlopen
-import tempfile
 import logging
-import tarfile
 
 from IPython.display import display, HTML, Audio, update_display
 # from ipywidgets import interact, interactive, fixed

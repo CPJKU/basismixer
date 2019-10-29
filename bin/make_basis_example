@@ -28,6 +28,7 @@ def main():
     
     idx_map = {}
     basis_data = []
+    print(basis_config)
 
     for musicxml in args.musicxml:
 
