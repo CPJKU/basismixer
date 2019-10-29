@@ -110,6 +110,10 @@ class PredictiveModel(ABC):
         """
         pass
 
+    @abstractmethod
+    def save_model(self, filename):
+        pass
+
     def predict(self, x):
         """
         Predict
@@ -213,6 +217,35 @@ class FeedForwardModel(nn.Module, PredictiveModel):
         self.output = nn.Linear(in_features=self.hidden_size[-1],
                                 out_features=self.output_size)
 
+    def save_model(self, filename):
+        state = dict(
+            arch=type(self).__name__,
+            input_size=self.input_size,
+            output_size=self.output_size,
+            hidden_size=self.hidden_size,
+            dropout=self.dropout,
+            nonlinearity=self.nonlinearity,
+            state_dict=self.state_dict(),
+            input_names=self.input_names,
+            output_names=self.output_names,
+            is_rnn=self.is_rnn,
+            input_type=self.input_type,
+        )
+        torch.save(state, filename)
+
+    @classmethod
+    def load_model(cls, filename):
+        try:
+            kwargs = torch.load(model_fn)
+        except RuntimeError:
+            kwargs = torch.load(model_fn,
+                                map_location='cpu')
+        state_dict = kwargs.pop('state_dict')
+        kwargs.pop('arch')
+        model = cls(**kwargs)
+        model.load_state_dict(state_dict)
+        return model
+
     @property
     def dtype(self):
         return self._dtype
@@ -277,6 +310,40 @@ class RecurrentModel(nn.Module, PredictiveModel):
     def dtype(self, dtype):
         self._dtype = dtype
         self.type(dtype)
+
+    def save_model(self, filename):
+        state = dict(
+            arch=type(self).__name__,
+            input_size=self.input_size,
+            output_size=self.output_size,
+            recurrent_size=self.recurrent_size,
+            n_layers=self.n_layers,
+            batch_first=self.batch_first,
+            hidden_size=self.hidden_size,
+            dropout=self.dropout,
+            nonlinearity=self.nonlinearity,
+            state_dict=self.state_dict(),
+            input_names=self.input_names,
+            output_names=self.output_names,
+            is_rnn=self.is_rnn,
+            input_type=self.input_type,
+            dtype=self.dtype,
+            device=self.device
+        )
+        torch.save(state, filename)
+
+    @classmethod
+    def load_model(cls, filename):
+        try:
+            kwargs = torch.load(model_fn)
+        except RuntimeError:
+            kwargs = torch.load(model_fn,
+                                map_location='cpu')
+        state_dict = kwargs.pop('state_dict')
+        kwargs.pop('arch')
+        model = cls(**kwargs)
+        model.load_state_dict(state_dict)
+        return model
 
     def init_hidden(self, batch_size):
         return torch.zeros(self.n_layers, batch_size, self.recurrent_size)
