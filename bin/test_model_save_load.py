@@ -68,20 +68,31 @@ def main_test_save_load():
 
     full_model = basismixer.predictive_models.construct_model(full_model_config)
     
+    # make prediction
     preds_before = test_full_model(full_model)
+    print('before')
     print(preds_before)
 
+    # save config and params
     config_fn = '/tmp/fm_cfg.json'
     params_fn = '/tmp/fm_params.pkl'
-
-    json.dump(full_model_config, open(config_fn, 'w'))
+    json.dump(full_model_config, open(config_fn, 'w'), indent=2)
     torch.save(full_model.state_dict(), params_fn)
 
+    # load config and params
     full_model_config = json.load(open(config_fn))
     full_model_params = torch.load(params_fn)
-    
     full_model = basismixer.predictive_models.construct_model(full_model_config, full_model_params)
-    preds_after = test_full_model(full_model)
 
+    # make prediction
+    preds_after = test_full_model(full_model)
+    print('after')
+    print(preds_after)
+
+    print('predictions all close?',
+          np.allclose(preds_before.view(np.float32),
+                      preds_after.view(np.float32),))
+
+    
 if __name__ == '__main__':
     main_test_save_load()
