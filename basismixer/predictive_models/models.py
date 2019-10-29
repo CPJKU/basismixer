@@ -1,3 +1,4 @@
+import importlib
 from abc import ABC, abstractmethod
 from collections import defaultdict
 
@@ -5,16 +6,43 @@ import numpy as np
 import torch
 from torch import nn
 
+def get_object_from_location(location, name):
+    module = importlib.import_module(location)
+    return getattr(module, name)
 
-class FullPredictiveModel(object):
+def set_params(m, params):
+    # for stat in ('mean_x', 'std_x', 'mean_y', 'std_y'):
+    #     if stat in params:
+    #         tstat = params[stat]
+    #         par = nn.Parameter(tstat, requires_grad=False)
+    #         m.register_parameter(stat, par)
+    m.load_state_dict(params)
+
+
+def construct_model(arch_spec, params=None):
+    constructor = get_object_from_location(*arch_spec['constructor'])
+    m = constructor(**arch_spec['args'])
+
+    if params:
+        set_params(m, params)
+
+    # m.set_lower_bound_y(arch_spec.get('lower_bound'))
+    # m.set_upper_bound_y(arch_spec.get('upper_bound'))
+
+    m.type(torch.float32)
+
+    return m
+
+
+class FullPredictiveModel(nn.Module):
     """Meta model for predicting an expressive performance
     """
 
-    def __init__(self, models, input_names, output_names,
+    def __init__(self, model_configs, input_names, output_names,
                  default_values={},
                  overlapping_output_strategy='FIFO'):
-
-        self.models = models
+        super().__init__()
+        self.models = nn.ModuleList([construct_model(cfg) for cfg in model_configs])
         self.input_names = np.array(input_names)
         self.output_names = np.array(output_names)
         self.default_values = default_values
