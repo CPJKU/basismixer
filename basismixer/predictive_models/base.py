@@ -6,9 +6,11 @@ import numpy as np
 import torch
 from torch import nn
 
+
 def get_object_from_location(location, name):
     module = importlib.import_module(location)
     return getattr(module, name)
+
 
 def set_params(m, params):
     # for stat in ('mean_x', 'std_x', 'mean_y', 'std_y'):
@@ -136,10 +138,6 @@ class PredictiveModel(ABC):
         output (i.e., predictions of expressive parameters) given some
         inputs. This method has to be implemented in each subclass
         """
-        pass
-
-    @abstractmethod
-    def save_model(self, filename):
         pass
 
     def predict(self, x):

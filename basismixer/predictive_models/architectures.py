@@ -63,35 +63,6 @@ class FeedForwardModel(NNModel):
         self.output = nn.Linear(in_features=self.hidden_size[-1],
                                 out_features=self.output_size)
 
-    def save_model(self, filename):
-        state = dict(
-            arch=type(self).__name__,
-            input_size=self.input_size,
-            output_size=self.output_size,
-            hidden_size=self.hidden_size,
-            dropout=self.dropout,
-            nonlinearity=self.nonlinearity,
-            state_dict=self.state_dict(),
-            input_names=self.input_names,
-            output_names=self.output_names,
-            is_rnn=self.is_rnn,
-            input_type=self.input_type,
-        )
-        torch.save(state, filename)
-
-    @classmethod
-    def load_model(cls, filename):
-        try:
-            kwargs = torch.load(model_fn)
-        except RuntimeError:
-            kwargs = torch.load(model_fn,
-                                map_location='cpu')
-        state_dict = kwargs.pop('state_dict')
-        kwargs.pop('arch')
-        model = cls(**kwargs)
-        model.load_state_dict(state_dict)
-        return model
-
     def forward(self, x):
         h = self.hidden_layers(x)
         output = self.output(h)
@@ -139,40 +110,6 @@ class RecurrentModel(NNModel):
 
         if self.output_names is None:
             self.output_names = [str(i) for i in range(self.output_size)]
-
-    def save_model(self, filename):
-        state = dict(
-            arch=type(self).__name__,
-            input_size=self.input_size,
-            output_size=self.output_size,
-            recurrent_size=self.recurrent_size,
-            n_layers=self.n_layers,
-            batch_first=self.batch_first,
-            hidden_size=self.hidden_size,
-            dropout=self.dropout,
-            nonlinearity=self.nonlinearity,
-            state_dict=self.state_dict(),
-            input_names=self.input_names,
-            output_names=self.output_names,
-            is_rnn=self.is_rnn,
-            input_type=self.input_type,
-            dtype=self.dtype,
-            device=self.device
-        )
-        torch.save(state, filename)
-
-    @classmethod
-    def load_model(cls, filename):
-        try:
-            kwargs = torch.load(model_fn)
-        except RuntimeError:
-            kwargs = torch.load(model_fn,
-                                map_location='cpu')
-        state_dict = kwargs.pop('state_dict')
-        kwargs.pop('arch')
-        model = cls(**kwargs)
-        model.load_state_dict(state_dict)
-        return model
 
     def init_hidden(self, batch_size):
         if self.bidirectional:
