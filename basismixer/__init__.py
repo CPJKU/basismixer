@@ -2,8 +2,13 @@
 
 import pkg_resources
 
-from basismixer.performance_codec import PerformanceCodec
+from basismixer.performance_codec import (
+    PerformanceCodec,
+    OnsetwiseDecompositionDynamicsCodec,
+    TimeCodec
+)
 from basismixer.basisfunctions import make_basis
+from basismixer.data import make_dataset
 
 # define a version variable
 __version__ = pkg_resources.get_distribution("basismixer").version
