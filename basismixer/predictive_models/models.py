@@ -269,6 +269,7 @@ class RecurrentModel(nn.Module, PredictiveModel):
                  input_size, output_size,
                  recurrent_size, hidden_size,
                  n_layers, dropout=0.0,
+                 bidirectional=True,
                  batch_first=True,
                  input_names=None,
                  output_names=None,
@@ -288,10 +289,14 @@ class RecurrentModel(nn.Module, PredictiveModel):
         self.output_size = output_size
         self.n_layers = n_layers
         self.batch_first = batch_first
+        self.bidirectional = bidirectional
         self.rnn = nn.GRU(input_size, self.recurrent_size,
                           self.n_layers,
-                          batch_first=batch_first, dropout=dropout)
-        self.dense = nn.Linear(in_features=self.recurrent_size,
+                          batch_first=batch_first, dropout=dropout,
+                          bidirectional=self.bidirectional)
+        dense_in_features = (self.recurrent_size * 2 if
+                             self.bidirectional else self.recurrent_size)
+        self.dense = nn.Linear(in_features=dense_in_features,
                                out_features=self.hidden_size)
         self.output = nn.Linear(in_features=self.hidden_size,
                                 out_features=output_size)
@@ -346,7 +351,11 @@ class RecurrentModel(nn.Module, PredictiveModel):
         return model
 
     def init_hidden(self, batch_size):
-        return torch.zeros(self.n_layers, batch_size, self.recurrent_size)
+        if self.bidirectional:
+            n_layers = 2 * self.n_layers
+        else:
+            n_layers = self.n_layers
+        return torch.zeros(n_layers, batch_size, self.recurrent_size)
 
     def forward(self, x, original_len=None):
         batch_size = x.size(0)
@@ -360,13 +369,15 @@ class RecurrentModel(nn.Module, PredictiveModel):
             x = nn.utils.rnn.pack_padded_sequence(
                 x, original_len, batch_first=True, enforce_sorted=False)
 
-        output, h = self.rnn(x, h0)
+        output, h = self.rnn(x, h0)  # tensor of shape (batch_size, seq_length, hidden_size*2)
 
         if isinstance(output, nn.utils.rnn.PackedSequence):
             output, _ = nn.utils.rnn.pad_packed_sequence(
                 output, batch_first=True)
 
-        dense = self.dense(output.contiguous().view(-1, self.recurrent_size))
+        flatten_shape = (self.recurrent_size * 2
+                         if self.bidirectional else self.recurrent_size)
+        dense = self.dense(output.contiguous().view(-1, flatten_shape))
         y = self.output(dense)
         y = y.view(batch_size, seq_len, self.output_size)
 
