@@ -28,6 +28,7 @@ class NNTrainer(ABC):
                  early_stopping=100,
                  out_dir='.',
                  resume_from_saved_model=None):
+
         self.n_gpu = n_gpu
         self.device, self.dtype = self.prepare_device()
         self.model = model.to(self.device)
@@ -36,7 +37,7 @@ class NNTrainer(ABC):
         if self.n_gpu > 1:
             self.model = torch.nn.DataParallel(model,
                                                device_ids=self.device_ids)
-        self.train_loss = loss
+        self.train_loss = train_loss
         self.valid_loss = valid_loss
         self.optimizer = optimizer
 
@@ -69,18 +70,19 @@ class NNTrainer(ABC):
     def train(self):
 
         train_loss_name = getattr(self.train_loss, 'name', 'Train Loss')
+        train_fn = os.path.join(self.out_dir, 'train_loss.txt')
         # Initialize TrainProgressMonitors
         train_losses = TrainProgressMonitor(train_loss_name,
                                             fn=train_fn)
         valid_loss_name = None
         valid_losses = None
-        if self.valid_loss is not None:
+        if self.valid_dataloader is not None:
+            valid_fn = os.path.join(self.out_dir, 'valid_loss.txt')
             if isinstance(self.valid_loss, (list, tuple)):
                 valid_loss_name = [getattr(crit, 'name', 'Valid Loss {0}'.format(i))
                                    for i, crit in enumerate(self.valid_loss)]
             else:
                 valid_loss_name = [getattr(self.valid_loss, 'name', 'Valid Loss')]
-
             valid_losses = TrainProgressMonitor(valid_loss_name,
                                                 fn=valid_fn,
                                                 show_epoch=False)
@@ -91,15 +93,15 @@ class NNTrainer(ABC):
         self.save_checkpoint(-1, False, True)
         try:
             for epoch in range(self.start_epoch, self.epochs):
-                tl = self.train_step()
+                tl = self.train_step(epoch)
 
-                train_loader.update(epoch, tl)
+                train_losses.update(epoch, tl)
 
                 do_checkpoint = np.mod(epoch + 1, self.save_freq) == 0
 
                 if do_checkpoint:
                     if self.valid_dataloader is not None:
-                        vl = self.valid_step()
+                        vl = self.valid_step(epoch)
                         valid_losses.update(epoch, vl)
                         LOGGER.info(train_losses.last_loss + '\t' + valid_losses.last_loss)
                     else:
@@ -245,51 +247,83 @@ class TrainProgressMonitor(object):
             f.write('{0}\t{1}\n'.format(self.epochs[-1], out_str))
 
 
-class FeedForwardTrainer(NNTrainer):
-    def __init__(self, model, loss, optimizer,
-                 train_data_loader,
-                 valid_data_loader=None,
+class SupervisedTrainer(NNTrainer):
+    def __init__(self, model, train_loss, optimizer,
+                 train_dataloader,
+                 valid_loss=None,
+                 valid_dataloader=None,
+                 best_comparison='smaller',
                  lr_scheduler=None,
                  n_gpu=1,
                  epochs=100,
                  save_freq=10,
-                 early_stop=100,
+                 early_stopping=100,
                  out_dir='.',
                  resume_from_saved_model=None):
         super().__init__(model=model,
-                         loss=loss,
+                         train_loss=train_loss,
                          optimizer=optimizer,
+                         train_dataloader=train_dataloader,
+                         valid_loss=valid_loss,
+                         best_comparison=best_comparison,
                          n_gpu=n_gpu,
                          epochs=epochs,
                          save_freq=save_freq,
-                         early_stop=early_stop,
+                         early_stopping=early_stopping,
                          out_dir=out_dir,
                          resume_from_saved_model=resume_from_saved_model)
+        self.lr_scheduler = lr_scheduler
 
-        self.train_data_loader = train_data_loader
-        self.valid_data_loader = valid_data_loader
-
-    def train_step(self, epoch):
+    def train_step(self, epoch, *args, **kwargs):
+        # set model for training
         self.model.train()
+        losses = []
+        bar = tqdm(enumerate(self.train_dataloader), total=len(self.train_dataloader))
+        for b_idx, (input, target) in bar:
 
-        bar = tqdm(enumerate(self.train_data_loader), total=len(self.train_data_loader))
+            if self.device is not None:
+                input = input.to(self.device).type(self.dtype)
+                target = target.to(self.device).type(self.dtype)
 
-        epoch_loss = 0
-        for b_idx, (x, y) in bar:
-            x, y = x.type(self.dtype), y.type(self.dtype)
+            output = self.model(input)
+            loss = self.train_loss(output, target)
+
+            losses.append(loss.item())
+            bar.set_description("epoch: {}/{}".format(epoch, self.epochs))
 
             self.optimizer.zero_grad()
-
-            y_h = self.model(y_h)
-
-            loss = self.loss(y, y_h)
-
             loss.backward()
             self.optimizer.step()
-            epoch_loss += loss.item()
 
-            bar.set_description("Epoch: {0}/{1}".format(epoch + 1, self.epochs + 1))
+        if self.lr_scheduler is not None:
+            self.lr_scheduler.step()
 
-        if self.validate:
+        return np.mean(losses)
 
-        return
+    def valid_step(self, *args, **kwargs):
+
+        self.model.eval()
+        losses = []
+        with torch.no_grad():
+            for input, target in val_loader:
+
+                if self.device is not None:
+                    target = target.to(self.device).type(self.dtype)
+                    input = input.to(self.device).type(self.dtype)
+
+                output = model(input)
+
+                if isinstance(criterion, (list, tuple)):
+                    loss = [c(output, target) for c in criterion]
+                else:
+                    loss = [criterion(output, target)]
+                losses.append([l.item() for l in loss])
+
+        return np.mean(losses, axis=0)
+
+
+class MSELoss(nn.Module):
+    name = 'MSE'
+
+    def __call__(self, predictions, targets):
+        return functional.mse_loss(predictions, targets)

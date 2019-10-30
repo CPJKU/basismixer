@@ -3,6 +3,10 @@
 import argparse
 import json
 import logging
+import os
+import pickle
+import bz2
+
 
 import numpy as np
 import torch
@@ -16,7 +20,18 @@ from basismixer import (BASIS_CONFIG_EXAMPLE,
                         TimeCodec,
                         PerformanceCodec,
                         make_dataset)
-from basismixer.predictive_models import RecurrentModel
+from basismixer.predictive_models import (RecurrentModel,
+                                          SupervisedTrainer,
+                                          MSELoss)
+
+
+def load_pyc_bz(fn):
+    return pickle.load(bz2.BZ2File(fn, 'r'))
+
+
+def save_pyc_bz(d, fn):
+    pickle.dump(d, bz2.BZ2File(fn, 'w'), pickle.HIGHEST_PROTOCOL)
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -49,14 +64,23 @@ if __name__ == '__main__':
 
     seq_len = 20
     batch_size = 10
+    dataset_fn = '/tmp/dataset.pyc.bz'
+    if not os.path.exists(dataset_fn):
+        dataset, in_names, out_names = make_dataset(args.xmlfolder, args.matchfolder,
+                                                    basis_functions, perf_codec, seq_len,
+                                                    aggregate_onsetwise=True)
+        data = dict(
+            dataset=dataset,
+            in_names=in_names,
+            out_names=out_names)
+        save_pyc_bz(data, dataset_fn)
+    else:
+        data = load_pyc_bz(dataset_fn)
+        dataset = data['dataset']
+        in_names = data['in_names']
+        out_names = data['out_names']
 
-    dataset, in_names, out_names = make_dataset(args.xmlfolder, args.matchfolder,
-                                                basis_functions, perf_codec, seq_len,
-                                                aggregate_onsetwise=True)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-
-    # for i, (x, y) in enumerate(dataloader):
-    #     LOGGER.info('batch {} x_shape: {} y_shape: {}'.format(i, x.shape, y.shape))
 
     LOGGER.info('Dataset has {} instances'.format(len(dataset)))
     LOGGER.info('Inputs: {}'.format(', '.join(in_names)))
@@ -74,12 +98,15 @@ if __name__ == '__main__':
                            input_names=in_names,
                            output_names=out_names,
                            input_type='onsetwise')
-    for i, (x, y) in enumerate(dataloader):
+    loss = MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    trainer = SupervisedTrainer(model=model,
+                                train_loss=loss,
+                                optimizer=optimizer,
+                                valid_loss=loss,
+                                train_dataloader=dataloader,
+                                valid_dataloader=dataloader,
+                                epochs=3,
+                                save_freq=1)
 
-        x = x.to(device).type(model.dtype)
-        y = y.to(device).type(model.dtype)
-
-        output = model(x)
-
-        mse = torch.mean((output - y).pow(2))
-        print(mse.item())
+    trainer.train()

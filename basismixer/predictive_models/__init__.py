@@ -8,4 +8,4 @@ from .base import (PredictiveModel,
                    construct_model)
 from .architectures import (FeedForwardModel,
                             RecurrentModel)
-# from .train import recurrent_loss, NNTrainer, RecurrentTrainer
+from .train import NNTrainer, SupervisedTrainer, MSELoss
