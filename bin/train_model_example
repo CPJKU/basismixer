@@ -5,6 +5,7 @@ import json
 import logging
 
 import numpy as np
+import torch
 
 from torch.utils.data import DataLoader
 
@@ -15,23 +16,20 @@ from basismixer import (BASIS_CONFIG_EXAMPLE,
                         TimeCodec,
                         PerformanceCodec,
                         make_dataset)
+from basismixer.predictive_models import RecurrentModel
 
 LOGGER = logging.getLogger(__name__)
 
+if __name__ == '__main__':
 
-def main():
     parser = argparse.ArgumentParser(
         description="Construct a dataset from files in the specified folders")
     parser.add_argument("xmlfolder", help="Folder with MusicXML files")
     parser.add_argument("matchfolder", help="Folder with match files")
-    parser.add_argument("--onsetwise",
-                        help=("Aggregate inputs and "
-                              "targets for sequential models"),
-                        action='store_true', default=False)
-    parser.add_argument("--targets",
-                        help="Indices of the targets in the dataset",
-                        nargs='+', type=int,
-                        default=None)
+    # parser.add_argument("--onsetwise",
+    #                     help=("Aggregate inputs and "
+    #                           "targets for sequential models"),
+    #                     action='store_true', default=False)
     # parser.add_argument("--basisconfig", type=str,
     #                     help=("JSON file specifying a set of basis functions "
     #                           "for each expressive target. If not specified "
@@ -54,21 +52,34 @@ def main():
 
     dataset, in_names, out_names = make_dataset(args.xmlfolder, args.matchfolder,
                                                 basis_functions, perf_codec, seq_len,
-                                                aggregate_onsetwise=args.onsetwise)
+                                                aggregate_onsetwise=True)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-    if args.targets is not None:
-        targets_idxs = np.array(args.targets)
-        for d in dataset.datasets:
-            d.targets_idx = targets_idxs
-
-    for i, (x, y) in enumerate(dataloader):
-        LOGGER.info('batch {} x_shape: {} y_shape: {}'.format(i, x.shape, y.shape))
+    # for i, (x, y) in enumerate(dataloader):
+    #     LOGGER.info('batch {} x_shape: {} y_shape: {}'.format(i, x.shape, y.shape))
 
     LOGGER.info('Dataset has {} instances'.format(len(dataset)))
     LOGGER.info('Inputs: {}'.format(', '.join(in_names)))
     LOGGER.info('Outputs: {}'.format(', '.join(out_names)))
 
+    device = torch.device('cpu')
+    recurrent_size = 10
+    hidden_size = 7
+    n_layers = 1
+    model = RecurrentModel(input_size=len(in_names),
+                           output_size=len(out_names),
+                           recurrent_size=recurrent_size,
+                           hidden_size=hidden_size,
+                           n_layers=n_layers,
+                           input_names=in_names,
+                           output_names=out_names,
+                           input_type='onsetwise')
+    for i, (x, y) in enumerate(dataloader):
 
-if __name__ == '__main__':
-    main()
+        x = x.to(device).type(model.dtype)
+        y = y.to(device).type(model.dtype)
+
+        output = model(x)
+
+        mse = torch.mean((output - y).pow(2))
+        print(mse.item())

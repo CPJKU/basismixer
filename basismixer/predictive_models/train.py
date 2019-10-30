@@ -51,16 +51,16 @@ class NNTrainer(ABC):
             self.resume_checkpoint(resume_from_saved_model)
 
     @abstractmethod
-    def train_epoch(self, epoch):
+    def train_step(self):
         pass
 
     @abstractmethod
-    def valid_epoch(self, epoch):
+    def valid_step(self):
         pass
 
     def train(self):
         for epoch in range(self.start_epoch, self.epochs):
-            result = self.train_epoch(epoch)
+            train_loss = self.train_step()
 
             self.loss_progress['train_loss'].append(result['train_loss'])
             try:
@@ -72,24 +72,28 @@ class NNTrainer(ABC):
                 LOGGER.info("  {}: {}".format(str(k), v))
 
             is_best = False
-            try:
-                improved = result['val_loss'] <= self.best_loss
-
-                if improved:
-                    self.best_loss = result['val_loss']
-                    self.not_improved_count = 0
-                    is_best = True
-                else:
-                    self.not_improved_count += 1
-
-                if self.not_improved_count == self.early_stop:
-                    LOGGER.info('No improvement for {0} epochs. '
-                                'Stoping training...'.format(self.early_stop))
-                    break
-            except Exception:
-                pass
 
             validate = (epoch + 1) % self.save_period == 0
+            if validate:
+                val_loss = self.valid_step(epoch)
+
+                try:
+                    improved = result['val_loss'] <= self.best_loss
+
+                    if improved:
+                        self.best_loss = result['val_loss']
+                        self.not_improved_count = 0
+                        is_best = True
+                    else:
+                        self.not_improved_count += 1
+
+                    if self.not_improved_count == self.early_stop:
+                        LOGGER.info('No improvement for {0} epochs. '
+                                    'Stoping training...'.format(self.early_stop))
+                        break
+                except Exception:
+                    pass
+
             if validate or is_best:
                 self.save_checkpoint(epoch,
                                      validate=validate,
@@ -147,6 +151,70 @@ class NNTrainer(ABC):
                     "Resume training from epoch {0}".format(self.start_epoch))
 
 
+class TrainProgressMonitor(object):
+    """
+    Monitor the progress of training a model.
+    """
+
+    def __init__(self, name='', fn='/tmp/train_progres.txt',
+                 show_fmt='{0} {1:.3f}', write_fmt='{0:.8f}', show_epoch=True):
+        self.name = name
+        self.losses = []
+        self.epochs = []
+        self.fn = fn
+        self.show_fmt = show_fmt
+        self.write_fmt = write_fmt
+        self.show_epoch = show_epoch
+
+        try:
+            os.unlink(self.fn)
+        except OSError:
+            pass
+
+        with open(self.fn, 'w') as f:
+            if isinstance(self.name, (list, tuple)):
+                header = '# Epoch' + '\t' + '\t'.join(self.name) + '\n'
+            else:
+                header = '# Epoch' + '\t' + self.name + '\n'
+
+            f.write(header)
+
+    def update(self, epoch, loss):
+        """
+        Append new loss(es) and update the log file
+        """
+        self.losses.append(loss)
+
+        self.epochs.append(epoch)
+
+        self.update_log()
+
+    @property
+    def last_loss(self):
+
+        fmt = self.show_fmt
+
+        if isinstance(self.losses[-1], (list, tuple, np.ndarray)):
+            out_str = [fmt.format(n, l) for n, l in zip(self.name, self.losses[-1])]
+        else:
+            out_str = [fmt.format(self.name, self.losses[-1])]
+
+        if self.show_epoch:
+            return 'Epoch:{0}\t{1}'.format(self.epochs[-1], '\t'.join(out_str))
+        else:
+            return '\t'.join(out_str)
+
+    def update_log(self):
+
+        if isinstance(self.losses[-1], (list, tuple, np.ndarray)):
+            out_str = '\t'.join([self.write_fmt.format(l) for l in self.losses[-1]])
+        else:
+            out_str = self.write_fmt.format(float(self.losses[-1]))
+
+        with open(self.fn, 'a') as f:
+            f.write('{0}\t{1}\n'.format(self.epochs[-1], out_str))
+
+
 class FeedForwardTrainer(NNTrainer):
     def __init__(self, model, loss, optimizer,
                  train_data_loader,
@@ -171,6 +239,27 @@ class FeedForwardTrainer(NNTrainer):
         self.train_data_loader = train_data_loader
         self.valid_data_loader = valid_data_loader
 
-    def train_epoch(self, epoch):
+    def train_step(self, epoch):
         self.model.train()
+
+        bar = tqdm(enumerate(self.train_data_loader), total=len(self.train_data_loader))
+
+        epoch_loss = 0
+        for b_idx, (x, y) in bar:
+            x, y = x.type(self.dtype), y.type(self.dtype)
+
+            self.optimizer.zero_grad()
+
+            y_h = self.model(y_h)
+
+            loss = self.loss(y, y_h)
+
+            loss.backward()
+            self.optimizer.step()
+            epoch_loss += loss.item()
+
+            bar.set_description("Epoch: {0}/{1}".format(epoch + 1, self.epochs + 1))
+
+        if self.validate:
+
         return

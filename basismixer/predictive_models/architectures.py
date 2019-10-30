@@ -118,25 +118,12 @@ class RecurrentModel(NNModel):
             n_layers = self.n_layers
         return torch.zeros(n_layers, batch_size, self.recurrent_size)
 
-    def forward(self, x, original_len=None):
+    def forward(self, x):
         batch_size = x.size(0)
         seq_len = x.size(1)
         h0 = self.init_hidden(batch_size).type(x.type())
-
-        # pack_padded_sequence() prevents rnns to process padded data
-        if original_len is not None:
-            original_len = torch.as_tensor(
-                original_len, dtype=torch.int64, device='cpu')
-            x = nn.utils.rnn.pack_padded_sequence(
-                x, original_len, batch_first=True, enforce_sorted=False)
-
         # tensor of shape (batch_size, seq_len, hidden_size*2) if bidirectional
         output, h = self.rnn(x, h0)
-
-        if isinstance(output, nn.utils.rnn.PackedSequence):
-            output, _ = nn.utils.rnn.pad_packed_sequence(
-                output, batch_first=True)
-
         flatten_shape = (self.recurrent_size * 2
                          if self.bidirectional else self.recurrent_size)
         dense = self.dense(output.contiguous().view(-1, flatten_shape))
