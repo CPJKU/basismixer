@@ -13,11 +13,6 @@ def get_object_from_location(location, name):
 
 
 def set_params(m, params):
-    # for stat in ('mean_x', 'std_x', 'mean_y', 'std_y'):
-    #     if stat in params:
-    #         tstat = params[stat]
-    #         par = nn.Parameter(tstat, requires_grad=False)
-    #         m.register_parameter(stat, par)
     m.load_state_dict(params)
 
 
@@ -27,9 +22,6 @@ def construct_model(arch_spec, params=None):
 
     if params:
         set_params(m, params)
-
-    # m.set_lower_bound_y(arch_spec.get('lower_bound'))
-    # m.set_upper_bound_y(arch_spec.get('upper_bound'))
 
     m.type(torch.float32)
 
