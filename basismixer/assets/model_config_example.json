@@ -1,0 +1,9 @@
+{
+    "constructor": [
+        "basismixer.predictive_models",
+        "FeedForwardModel"
+    ],
+    "args": {
+        "hidden_size": 64
+    }
+}
