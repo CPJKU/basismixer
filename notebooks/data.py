@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import appdirs
 import os
 import argparse
 import tarfile
@@ -10,6 +9,8 @@ import re
 
 from IPython.display import display, HTML, Audio, update_display
 import ipywidgets as widgets
+import appdirs
+
 from basismixer.utils import pair_files
 
 REPO_NAME = 'vienna4x22_rematched'

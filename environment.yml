@@ -17,6 +17,7 @@ dependencies:
   - tqdm
 
   - pip:
+    - appdirs
     - soundfile
     - partitura
     - git+https://github.com/OFAI/basismixer.git@develop
