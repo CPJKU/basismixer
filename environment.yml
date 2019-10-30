@@ -18,4 +18,4 @@ dependencies:
 
   - pip:
     - partitura
-    
+    - git+https://github.com/OFAI/basismixer.git@develop
