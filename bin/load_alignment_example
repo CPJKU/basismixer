@@ -18,9 +18,14 @@ def main():
     parser = argparse.ArgumentParser(description="Extract match information for performance codec")
     parser.add_argument("xmlfolder", help="Folder with MusicXML files")
     parser.add_argument("matchfolder", help="Folder with match files")
+    parser.add_argument("--valid-pieces", help="Valid pieces", default=None)
     args = parser.parse_args()
 
     folders = dict(xml=args.xmlfolder, match=args.matchfolder)
+
+    valid_pieces = None
+    if args.valid_pieces:
+        valid_pieces = np.loadtxt(args.valid_pieces, dtype=str)
 
     # for piece, files in pair_files(folders).items():
     for piece, files in pair_files(folders, by_prefix=False).items():
@@ -29,10 +34,13 @@ def main():
         # if not piece.startswith('Chopin_op38'):
         # if not piece.startswith('Chopin_op10'):
         # if not piece.startswith('Schubert'):
-        if not (piece.startswith('beethoven_op031_no2') and piece.endswith('_mv1')):
-            continue
+        # if not (piece.startswith('beethoven_op031_no2') and piece.endswith('_mv1')):
+        #     continue
+        if valid_pieces is not None:
+            if not piece in valid_pieces:
+                continue
         print(piece)
-            
+
         part = partitura.load_musicxml(files['xml'].pop(), validate=False)
         # for n in part.iter_all(partitura.score.GenericNote, include_subclasses=True):
         #     if not isinstance(n, partitura.score.GraceNote):
@@ -45,16 +53,15 @@ def main():
         for match in files['match']:
             # if not '_p14' in match:
             #     continue
-            print(match)
-
+            # print(match)
             ppart, alignment = partitura.load_match(match, first_note_at_zero=True)
 
             for a in alignment:
                 if 'score_id' in a:
                     a['score_id'] = a['score_id'].split('-')[0]
-                    
+
             dyn_codec = pc.OnsetwiseDecompositionDynamicsCodec()
-            time_codec = pc.TimeCodec(normalization='standardized_bp')
+            time_codec = pc.TimeCodec(normalization='bp_standardized')
             perf_codec = pc.PerformanceCodec(time_codec, dyn_codec)
             targets, snote_ids = perf_codec.encode(part, ppart, alignment)
 
@@ -99,7 +106,6 @@ def main():
                                      rtol=rtol, atol=atol)):
                 plot_reconstructed_targets('offsets', offsets)
 
-
             # plot targets
             bm = part.beat_map
             snote_dict = dict((n.id, n) for n in part.notes_tied)
@@ -108,7 +114,7 @@ def main():
             measure_times = np.array([(m.start.t, m.number) for m in part.iter_all(partitura.score.Measure)])
             measure_times[:, 0] = bm(measure_times[:, 0])
 
-            plot_targets(targets, perf_codec.parameter_names, '/tmp/out.pdf', onsets=onsets, xticks=measure_times, title=match)
+            plot_targets(targets, perf_codec.parameter_names, '/tmp/{0}.pdf'.format(piece), onsets=onsets, xticks=measure_times, title=match)
 
 
 def plot_reconstructed_targets(title, values):
@@ -119,6 +125,7 @@ def plot_reconstructed_targets(title, values):
     plt.grid()
     plt.legend()
     plt.show()
+
 
 def plot_targets(targets, names, out_fn, onsets=None, xticks=None, title=None):
 
