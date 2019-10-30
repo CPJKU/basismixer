@@ -1,10 +1,19 @@
 #!/usr/bin/env python
-
+import pickle
+import bz2
 import os
 import tempfile
 from collections import defaultdict
 
 import numpy as np
+
+
+def load_pyc_bz(fn):
+    return pickle.load(bz2.BZ2File(fn, 'r'))
+
+
+def save_pyc_bz(d, fn):
+    pickle.dump(d, bz2.BZ2File(fn, 'w'), pickle.HIGHEST_PROTOCOL)
 
 
 def to_memmap(a, folder=None):

@@ -4,9 +4,6 @@ import argparse
 import json
 import logging
 import os
-import pickle
-import bz2
-
 
 import numpy as np
 import torch
@@ -20,25 +17,59 @@ from basismixer import (BASIS_CONFIG_EXAMPLE,
                         TimeCodec,
                         PerformanceCodec,
                         make_dataset)
-from basismixer.predictive_models import (RecurrentModel,
+from basismixer.predictive_models import (construct_model,
+                                          RecurrentModel,
                                           SupervisedTrainer,
                                           MSELoss)
-
-
-def load_pyc_bz(fn):
-    return pickle.load(bz2.BZ2File(fn, 'r'))
-
-
-def save_pyc_bz(d, fn):
-    pickle.dump(d, bz2.BZ2File(fn, 'w'), pickle.HIGHEST_PROTOCOL)
-
+from basismixer.utils import load_pyc_bz, save_pyc_bz
 
 LOGGER = logging.getLogger(__name__)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Train a Model given a dataset")
+    paraser.add_argument("dataset", help="Dataset")
+    parser.add_argument("--model-config", help="Model Configuration",
+                        default=MODEL_CONFIG_EXAMPLE)
+    parser.add_argument("--params", help="Parameters of the model",
+                        default=None)
+    parser.add_argument("--targets",
+                        help="Indices of the targets in the dataset",
+                        nargs='+', type=int,
+                        default=None)
+    parser.add_argument("xmlfolder", help="Folder with MusicXML files")
+    parser.add_argument("matchfolder", help="Folder with match files")
+    args = parser.parse_args()
+
+    # Load model architecture
+    model_config = json.load(open(args.model_config))
+
+    # Load model parameters if needed
+    params = None
+    if args.params is not None:
+        params = torch.load(args.params)
+
+    # load model
+    model = construct_model(model_config, params)
+
+    # load dataset
+    data = load_pyc_bz(dataset_fn)
+    dataset = data['dataset']
+    in_names = data['in_names']
+    out_names = data['out_names']
+
+    # select expressive parameters
+    if args.targets is not None:
+        targets_idxs = np.array(args.targets)
+        for d in dataset.datasets:
+            d.targets_idx = targets_idxs
+
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(
-        description="Construct a dataset from files in the specified folders")
+        description="Train a Model")
     parser.add_argument("xmlfolder", help="Folder with MusicXML files")
     parser.add_argument("matchfolder", help="Folder with match files")
     args = parser.parse_args()
@@ -55,11 +86,11 @@ if __name__ == '__main__':
 
     seq_len = 20
     batch_size = 10
-    dataset_fn = '/tmp/dataset.pyc.bz'
+    dataset_fn = '/tmp/dataset_notewise.pyc.bz'
     if not os.path.exists(dataset_fn):
         dataset, in_names, out_names = make_dataset(args.xmlfolder, args.matchfolder,
                                                     basis_functions, perf_codec, seq_len,
-                                                    aggregate_onsetwise=True)
+                                                    aggregate_onsetwise=False)
         data = dict(
             dataset=dataset,
             in_names=in_names,
