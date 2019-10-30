@@ -13,8 +13,8 @@ from basismixer.utils import pair_files
 LOGGER = logging.getLogger(__name__)
 
 
-def make_dataset(mxml_folder, match_folder, basis_functions, perf_codec):
-    """Create a dataset from the MusicXML and Match files
+def make_dataset(mxml_folder, match_folder, basis_functions, perf_codec, seq_len):
+    """Create a dataset from the MusicXML and Match files.
 
     Parameters
     ----------
@@ -26,7 +26,9 @@ def make_dataset(mxml_folder, match_folder, basis_functions, perf_codec):
         A list of elements that can be either functions or basis
         function names as strings.
     perf_codec : :class:`~basismixer.performance_codec.PerformanceCodec`
-        Description of `perf_codec`
+        Performance codec to compute the expressive parameters.
+    seq_len : int
+        The sequence length for the dataset.
 
     Returns
     -------
@@ -87,15 +89,22 @@ def make_dataset(mxml_folder, match_folder, basis_functions, perf_codec):
 
             data.append((basis_matched, bf_idx, targets))
 
+            # FOR DEVELOPMENT
+            # break
+
     # total number of basis functions in the dataset
     n_basis = len(bf_idx_map)
-    # sequence length for RNNs (for FFNNs set to 1)
-    seq_len = 10
+
+    output_names = perf_codec.parameter_names
+    bf_idx_inv_map = dict((v, k) for k, v in bf_idx_map.items())
+    input_names = [bf_idx_inv_map[i] for i in range(n_basis)]
 
     # create and concatenate the datasets for each performance
-    return ConcatDataset(
-        [BasisMixerDataSet(basis, idx, n_basis, targets, seq_len)
-         for basis, idx, targets in data])
+    dataset = ConcatDataset([BasisMixerDataSet(basis, idx, n_basis,
+                                               targets, seq_len)
+                             for basis, idx, targets in data])
+
+    return dataset, input_names, output_names
 
 
 class BasisMixerDataSet(Dataset):

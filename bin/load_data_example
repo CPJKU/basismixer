@@ -22,23 +22,36 @@ def main():
         description="Construct a dataset from files in the specified folders")
     parser.add_argument("xmlfolder", help="Folder with MusicXML files")
     parser.add_argument("matchfolder", help="Folder with match files")
-    parser.add_argument("--basisconfig", type=str,
-                        help=("JSON file specifying a set of basis functions "
-                              "for each expressive target. If not specified "
-                              "a default configuration will be used."),
-                        default=BASIS_CONFIG_EXAMPLE)
+    # parser.add_argument("--basisconfig", type=str,
+    #                     help=("JSON file specifying a set of basis functions "
+    #                           "for each expressive target. If not specified "
+    #                           "a default configuration will be used."),
+    #                     default=BASIS_CONFIG_EXAMPLE)
     args = parser.parse_args()
-    basis_config = json.load(open(args.basisconfig))
-    basis_functions = list(set(i for ii in basis_config.values() for i in ii))
-
+    # basis_config = json.load(open(args.basisconfig))
+    basis_functions = ['polynomial_pitch_basis',
+                       'loudness_direction_basis',
+                       'tempo_direction_basis',
+                       'articulation_basis',
+                       'duration_basis'
+                       ]
     dyn_codec = OnsetwiseDecompositionDynamicsCodec()
     time_codec = TimeCodec(normalization='standardized_bp')
     perf_codec = PerformanceCodec(time_codec, dyn_codec)
 
-    dataset = make_dataset(args.xmlfolder, args.matchfolder,
-                           basis_functions, perf_codec)
+    seq_len = 20
+    batch_size = 10
+
+    dataset, in_names, out_names = make_dataset(args.xmlfolder, args.matchfolder,
+                                                basis_functions, perf_codec, seq_len)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+
+    for i, (x, y) in enumerate(dataloader):
+        LOGGER.info('batch {} x_shape: {} y_shape: {}'.format(i, x.shape, y.shape))
+
     LOGGER.info('Dataset has {} instances'.format(len(dataset)))
-
-
+    LOGGER.info('Inputs: {}'.format(', '.join(in_names)))
+    LOGGER.info('Outputs: {}'.format(', '.join(out_names)))
+        
 if __name__ == '__main__':
     main()
