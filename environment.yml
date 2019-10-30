@@ -2,31 +2,20 @@ name: basismixer
 
 channels:
   - defaults
-  - speleo3
-  - conda-forge
   - pytorch
 
 dependencies:
-  - python=3.7
-  - mkl
+  - python=3
   - numpy
   - scipy
-  - cython
   - matplotlib
   - ipython
   - jupyter
-  - pandas
-  - sympy
-  - nose
-  - autopep8
-  - virtualenv
   - pytorch
-  - torchvision
-  - scikit-learn
   - sphinx
   - pip
+  - tqdm
 
   - pip:
-    - madmom
-    - jedi
-    - lark-parser
+    - partitura
+    
