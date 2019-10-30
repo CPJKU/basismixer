@@ -17,11 +17,15 @@ class NNTrainer(ABC):
     Class for training neural networks
     """
 
-    def __init__(self, model, loss, optimizer,
+    def __init__(self, model, train_loss, optimizer,
+                 train_dataloader,
+                 valid_loss=None,
+                 valid_dataloader=None,
+                 best_comparison='smaller',
                  n_gpu=1,
                  epochs=100,
-                 save_period=10,
-                 early_stop=100,
+                 save_freq=10,
+                 early_stopping=100,
                  out_dir='.',
                  resume_from_saved_model=None):
         self.n_gpu = n_gpu
@@ -32,15 +36,19 @@ class NNTrainer(ABC):
         if self.n_gpu > 1:
             self.model = torch.nn.DataParallel(model,
                                                device_ids=self.device_ids)
-        self.loss = loss
+        self.train_loss = loss
+        self.valid_loss = valid_loss
         self.optimizer = optimizer
+
+        self.train_dataloader = train_dataloader
+        self.valid_dataloader = valid_dataloader
 
         self.start_epoch = 0
         self.epochs = epochs
-        self.save_period = save_period
-        self.early_stop = early_stop
+        self.save_freq = save_freq
+        self.early_stopping = early_stopping
         self.best_loss = np.inf
-        self.not_improved_count = 0
+        self.best_comparison = best_comparison
 
         if not os.path.exists(self.out_dir):
             os.mkdir(self.out_dir)
@@ -51,57 +59,79 @@ class NNTrainer(ABC):
             self.resume_checkpoint(resume_from_saved_model)
 
     @abstractmethod
-    def train_step(self):
+    def train_step(self, *args, **kwargs):
         pass
 
     @abstractmethod
-    def valid_step(self):
+    def valid_step(self, *args, **kwargs):
         pass
 
     def train(self):
-        for epoch in range(self.start_epoch, self.epochs):
-            train_loss = self.train_step()
 
-            self.loss_progress['train_loss'].append(result['train_loss'])
-            try:
-                self.loss_progress['val_loss'].append(result['val_loss'])
-            except:
-                pass
+        train_loss_name = getattr(self.train_loss, 'name', 'Train Loss')
+        # Initialize TrainProgressMonitors
+        train_losses = TrainProgressMonitor(train_loss_name,
+                                            fn=train_fn)
+        valid_loss_name = None
+        valid_losses = None
+        if self.valid_loss is not None:
+            if isinstance(self.valid_loss, (list, tuple)):
+                valid_loss_name = [getattr(crit, 'name', 'Valid Loss {0}'.format(i))
+                                   for i, crit in enumerate(self.valid_loss)]
+            else:
+                valid_loss_name = [getattr(self.valid_loss, 'name', 'Valid Loss')]
 
-            for k, v in result.items():
-                LOGGER.info("  {}: {}".format(str(k), v))
+            valid_losses = TrainProgressMonitor(valid_loss_name,
+                                                fn=valid_fn,
+                                                show_epoch=False)
 
-            is_best = False
+        validations_wo_improvement = 0
 
-            validate = (epoch + 1) % self.save_period == 0
-            if validate:
-                val_loss = self.valid_step(epoch)
+        # save before training
+        self.save_checkpoint(-1, False, True)
+        try:
+            for epoch in range(self.start_epoch, self.epochs):
+                tl = self.train_step()
 
-                try:
-                    improved = result['val_loss'] <= self.best_loss
+                train_loader.update(epoch, tl)
 
-                    if improved:
-                        self.best_loss = result['val_loss']
-                        self.not_improved_count = 0
-                        is_best = True
+                do_checkpoint = np.mod(epoch + 1, self.save_freq) == 0
+
+                if do_checkpoint:
+                    if self.valid_dataloader is not None:
+                        vl = self.valid_step()
+                        valid_losses.update(epoch, vl)
+                        LOGGER.info(train_losses.last_loss + '\t' + valid_losses.last_loss)
                     else:
-                        self.not_improved_count += 1
+                        vl = [tl]
+                        LOGGER.info(train_losses.last_loss)
+                    if self.best_comparison == 'smaller':
+                        is_best = vl[0] < best_loss
+                        self.best_loss = min(vl[0], best_loss)
+                    elif self.best_comparison == 'larger':
+                        is_best = vl[0] > best_loss
+                        self.best_loss = max(vl[0], best_loss)
 
-                    if self.not_improved_count == self.early_stop:
-                        LOGGER.info('No improvement for {0} epochs. '
-                                    'Stoping training...'.format(self.early_stop))
+                    self.save_checkpoint(epoch,
+                                         validate=do_checkpoint,
+                                         is_best=is_best)
+
+                    if is_best:
+                        validations_wo_improvement = 0
+                    else:
+                        validations_wo_improvement += 1
+
+                    if validations_wo_improvement > self.early_stopping:
                         break
-                except Exception:
-                    pass
+        except KeyboardInterrupt:
+            LOGGER.info('Training interrupted')
+            pass
 
-            if validate or is_best:
-                self.save_checkpoint(epoch,
-                                     validate=validate,
-                                     is_best=is_best)
-
-        LOGGER.info("The best loss: {}".format(self.best_loss))
-        LOGGER.info("Loss of training progress saved.")
-        np.save(os.path.join(self.out_dir, 'loss_progress.npy'), self.loss_progress)
+        # Load best model
+        best_backup = torch.load(os.path.join(self.out_dir, 'best_model.pth'))
+        LOGGER.info('Loading best model (epoch {0}: {1:.4f})'.format(best_backup['epoch'],
+                                                                     best_backup['best_loss']))
+        self.model.load_state_dict(best_backup['state_dict'])
 
     def save_checkpoint(self, epoch, validate, is_best):
         arch = type(self.model).__name__
@@ -117,9 +147,9 @@ class NNTrainer(ABC):
             torch.save(state, filename)
             LOGGER.info("Saving checkpoint: {0} ...".format(filename))
         if is_best:
-            filename = str(self.checkpoint_dir / 'model_best.pth')
+            filename = os.path.join(self.out_dir, 'best_model.pth')
             torch.save(state, filename)
-            LOGGER.info("Saving current best: %s ..." % filename)
+            LOGGER.info("Saving current best: {0} ...".format(filename))
 
     def prepare_device(self):
         n_gpu = torch.cuda.device_count()
@@ -222,7 +252,7 @@ class FeedForwardTrainer(NNTrainer):
                  lr_scheduler=None,
                  n_gpu=1,
                  epochs=100,
-                 save_period=10,
+                 save_freq=10,
                  early_stop=100,
                  out_dir='.',
                  resume_from_saved_model=None):
@@ -231,7 +261,7 @@ class FeedForwardTrainer(NNTrainer):
                          optimizer=optimizer,
                          n_gpu=n_gpu,
                          epochs=epochs,
-                         save_period=save_period,
+                         save_freq=save_freq,
                          early_stop=early_stop,
                          out_dir=out_dir,
                          resume_from_saved_model=resume_from_saved_model)
