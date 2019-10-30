@@ -3,8 +3,10 @@
 import threading
 from functools import partial
 import time
+import io
 import os
 import logging
+from urllib.request import urlopen
 
 from IPython.display import display, HTML, Audio, update_display
 # from ipywidgets import interact, interactive, fixed
@@ -19,49 +21,17 @@ import partitura
 from partitura.utils import partition
 import basismixer
 import basismixer.performance_codec as pc
+import data
+
+# ensure we have the vienna4x22 corpus
+data.init()
 
 LOGGER = logging.getLogger(__name__)
 
-DATASET_URL = 'https://jobim.ofai.at/gitlab/accompanion/vienna4x22_rematched/repository/archive'
 OGG_URL_BASE = 'https://spocs.duckdns.org/vienna_4x22/'
-TMP_DIR = '/tmp/'
-DATASET_DIR = None
-PIECES = ()
-PERFORMERS = ()
 PERF_CODEC = pc.PerformanceCodec(pc.TimeCodec(), pc.NotewiseDynamicsCodec())
 
-def init():
-    global DATASET_DIR, PIECES, PERFORMERS
-
-    plt.rcParams.update({'font.size': 8})
-
-    status = widgets.Output()
-    display(status)
-    status.clear_output()
-
-    # # assume we have the data to avoid download
-    # DATASET_DIR = '/tmp/vienna4x22_rematched.git'
-
-    if not DATASET_DIR:
-        status.append_stdout('Downloading Vienna 4x22 Corpus...')
-        try:
-            with tarfile.open(fileobj=io.BytesIO(urlopen(DATASET_URL).read())) as archive:
-                folder = next(iter(archive.getnames()), None)
-                archive.extractall(TMP_DIR)
-                if folder:
-                    DATASET_DIR = os.path.join(TMP_DIR, folder)
-        except Exception as e:
-            status.append_stdout('\nError: {}'.format(e))
-        status.append_stdout('done\nData is in {}'.format(DATASET_DIR))
-    
-    if DATASET_DIR:
-        fn_pat = re.compile('(.*)_(p[0-9][0-9])\.match')
-        match_files = os.listdir(os.path.join(DATASET_DIR, 'match'))
-        pieces, performers = zip(*[m.groups() for m in [fn_pat.match(fn)
-                                                        for fn in match_files]
-                                   if m])
-        PIECES = sorted(set(pieces))
-        PERFORMERS = sorted(set(performers))
+plt.rcParams.update({'font.size': 8})
 
 
 def load_performance_audio(piece, performer):
@@ -75,32 +45,29 @@ def load_performance_audio(piece, performer):
 
 
 def get_performance_info(piece, performer, fig, axs):
-    assert DATASET_DIR
-    musicxml_fn = os.path.join(DATASET_DIR, 'musicxml', '{}.musicxml'.format(piece))
-    match_fn = os.path.join(DATASET_DIR, 'match', '{}_{}.match'.format(piece, performer))
+    assert data.DATASET_DIR
+    musicxml_fn = os.path.join(data.DATASET_DIR, 'musicxml', '{}.musicxml'.format(piece))
+    match_fn = os.path.join(data.DATASET_DIR, 'match', '{}_{}.match'.format(piece, performer))
 
     part = partitura.load_musicxml(musicxml_fn)
     
     ppart, alignment = partitura.load_match(match_fn, first_note_at_zero=True)
 
-    part_by_id = dict((n.id, n) for n in part.notes_tied)
-    ppart_by_id = dict((n['id'], n) for n in ppart.notes)
-
-    # pair matched score and performance notes
-    note_pairs = [(part_by_id[a['score_id']], #.split('-')[0]],
-                   ppart_by_id[a['performance_id']])
-                  for a in alignment if a['label'] == 'match']
-
-    note_pairs.sort(key=lambda x: x[0].start.t)
-
-    matched_score = to_matched_score(note_pairs, part.beat_map)
-
-    targets, mbp = PERF_CODEC.encode(matched_score)
+    # targets, mbp = PERF_CODEC.encode(matched_score)
+    targets, snote_ids = PERF_CODEC.encode(part, ppart, alignment)
+    targets = targets.view(np.float32).reshape((len(targets), -1))
     targets[np.isnan(targets)] = 0
 
+    part_by_id = dict((n.id, n) for n in part.notes_tied)
+    ppart_by_id = dict((n['id'], n) for n in ppart.notes)
+    s_to_p_id = dict((a['score_id'], a['performance_id'])
+                     for a in alignment if a['label'] == 'match')
+    s_notes = [part_by_id[n] for n in snote_ids]
+    p_notes = [ppart_by_id[s_to_p_id[n]] for n in snote_ids]
+
     bm = part.beat_map
-    s_onsets = bm([n.start.t for n, _ in note_pairs])
-    p_onsets = np.array([n['note_on'] for _, n in note_pairs])
+    s_onsets = bm([n.start.t for n in s_notes])
+    p_onsets = np.array([n['note_on'] for n in p_notes])
     measure_times = np.array([(m.start.t, '{}'.format(m.number)) for m in
                               part.iter_all(partitura.score.Measure)],
                              dtype=[('t', 'f4'), ('label', 'U100')])
@@ -110,8 +77,8 @@ def get_performance_info(piece, performer, fig, axs):
     plot_targets(fig, axs, targets, onsets=s_onsets, xlabel='Measure number',
                  xticks=measure_times) # , title='{} {}'.format(piece, performer))
 
-    s_times = np.r_[s_onsets, note_pairs[-1][0].end.t]
-    p_times = np.r_[p_onsets, note_pairs[-1][1]['note_off']]
+    s_times = np.r_[s_onsets, s_notes[-1].end.t]
+    p_times = np.r_[p_onsets, p_notes[-1]['note_off']]
     # score_perf_map = interp1d(s_onsets, p_onsets, bounds_error=False, fill_value='extrapolate')
     score_perf_map = interp1d(s_times, p_times, bounds_error=False, fill_value=(p_times[0], p_times[-1]))
 
@@ -174,11 +141,11 @@ def plot_targets(fig, axs, targets, onsets=None, xticks=None, title=None,
 
 def performance_player():
     status = widgets.Output()
-    piece_dd = widgets.Dropdown(options=PIECES, description='Piece:')
-    performer_dd = widgets.Dropdown(options=PERFORMERS, description='Performer:')
+    piece_dd = widgets.Dropdown(options=data.PIECES, description='Piece:')
+    performer_dd = widgets.Dropdown(options=data.PERFORMERS, description='Performer:')
 
-    if PIECES and PERFORMERS:
-        current_performance = [PIECES[0], PERFORMERS[0]]
+    if data.PIECES and data.PERFORMERS:
+        current_performance = [data.PIECES[0], data.PERFORMERS[0]]
     else:
         current_performance = [None, None]
     
@@ -283,5 +250,3 @@ def to_matched_score(note_pairs, beat_map):
     fields = [('onset', 'f4'), ('duration', 'f4'), ('pitch', 'i4'),
               ('p_onset', 'f4'), ('p_duration', 'f4'), ('velocity', 'i4')]
     return np.array(ms, dtype=fields)
-
-init()
