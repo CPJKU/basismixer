@@ -108,11 +108,11 @@ class NNTrainer(ABC):
                         vl = [tl]
                         LOGGER.info(train_losses.last_loss)
                     if self.best_comparison == 'smaller':
-                        is_best = vl[0] < best_loss
-                        self.best_loss = min(vl[0], best_loss)
+                        is_best = vl[0] < self.best_loss
+                        self.best_loss = min(vl[0], self.best_loss)
                     elif self.best_comparison == 'larger':
-                        is_best = vl[0] > best_loss
-                        self.best_loss = max(vl[0], best_loss)
+                        is_best = vl[0] > self.best_loss
+                        self.best_loss = max(vl[0], self.best_loss)
 
                     self.save_checkpoint(epoch,
                                          validate=do_checkpoint,
@@ -265,6 +265,7 @@ class SupervisedTrainer(NNTrainer):
                          optimizer=optimizer,
                          train_dataloader=train_dataloader,
                          valid_loss=valid_loss,
+                         valid_dataloader=valid_dataloader,
                          best_comparison=best_comparison,
                          n_gpu=n_gpu,
                          epochs=epochs,
@@ -305,18 +306,18 @@ class SupervisedTrainer(NNTrainer):
         self.model.eval()
         losses = []
         with torch.no_grad():
-            for input, target in val_loader:
+            for input, target in self.valid_dataloader:
 
                 if self.device is not None:
                     target = target.to(self.device).type(self.dtype)
                     input = input.to(self.device).type(self.dtype)
 
-                output = model(input)
+                output = self.model(input)
 
-                if isinstance(criterion, (list, tuple)):
-                    loss = [c(output, target) for c in criterion]
+                if isinstance(self.valid_loss, (list, tuple)):
+                    loss = [c(output, target) for c in self.valid_loss]
                 else:
-                    loss = [criterion(output, target)]
+                    loss = [self.valid_loss(output, target)]
                 losses.append([l.item() for l in loss])
 
         return np.mean(losses, axis=0)

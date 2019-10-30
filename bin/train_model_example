@@ -41,15 +41,6 @@ if __name__ == '__main__':
         description="Construct a dataset from files in the specified folders")
     parser.add_argument("xmlfolder", help="Folder with MusicXML files")
     parser.add_argument("matchfolder", help="Folder with match files")
-    # parser.add_argument("--onsetwise",
-    #                     help=("Aggregate inputs and "
-    #                           "targets for sequential models"),
-    #                     action='store_true', default=False)
-    # parser.add_argument("--basisconfig", type=str,
-    #                     help=("JSON file specifying a set of basis functions "
-    #                           "for each expressive target. If not specified "
-    #                           "a default configuration will be used."),
-    #                     default=BASIS_CONFIG_EXAMPLE)
     args = parser.parse_args()
     # basis_config = json.load(open(args.basisconfig))
     basis_functions = ['polynomial_pitch_basis',
@@ -98,15 +89,25 @@ if __name__ == '__main__':
                            input_names=in_names,
                            output_names=out_names,
                            input_type='onsetwise')
-    loss = MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    trainer = SupervisedTrainer(model=model,
-                                train_loss=loss,
-                                optimizer=optimizer,
-                                valid_loss=loss,
-                                train_dataloader=dataloader,
-                                valid_dataloader=dataloader,
-                                epochs=3,
-                                save_freq=1)
 
-    trainer.train()
+    params_fn = '/tmp/best_model.pth'
+
+    if not os.path.exists(params_fn):
+
+        loss = MSELoss()
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+        trainer = SupervisedTrainer(model=model,
+                                    train_loss=loss,
+                                    optimizer=optimizer,
+                                    valid_loss=loss,
+                                    train_dataloader=dataloader,
+                                    valid_dataloader=dataloader,
+                                    epochs=3,
+                                    save_freq=1,
+                                    out_dir='/tmp')
+
+        trainer.train()
+
+    else:
+        model_params = torch.load(params_fn)
+        model.load_state_dict(model_params['state_dict'])

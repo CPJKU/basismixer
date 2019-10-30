@@ -151,10 +151,10 @@ class PredictiveModel(ABC):
         if do_reshape:
             x = x[np.newaxis]
 
-        if isinstance(self, nn.Module):
+        if isinstance(self, nn.Module) and isinstance(x, np.ndarray):
             mx = torch.tensor(x).type(self.dtype).to(self.device)
         else:
-            mx = x
+            mx = x.type(self.dtype).to(self.device)
         # model predictions
         predictions = self(mx)
 
