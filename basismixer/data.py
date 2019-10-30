@@ -90,7 +90,7 @@ def make_dataset(mxml_folder, match_folder, basis_functions, perf_codec, seq_len
             data.append((basis_matched, bf_idx, targets))
 
             # FOR DEVELOPMENT
-            break
+            # break
 
     # total number of basis functions in the dataset
     n_basis = len(bf_idx_map)
