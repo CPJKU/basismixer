@@ -22,17 +22,21 @@ def main():
 
     folders = dict(xml=args.xmlfolder, match=args.matchfolder)
 
-    for piece, files in pair_files(folders).items():
+    # for piece, files in pair_files(folders).items():
+    for piece, files in pair_files(folders, by_prefix=False).items():
         # if not piece.startswith('Mozart_K331_1st-mov'):
         # if not piece.startswith('Mozart_K331_1st'):
         # if not piece.startswith('Chopin_op38'):
         # if not piece.startswith('Chopin_op10'):
         # if not piece.startswith('Schubert'):
-        #     continue
+        if not (piece.startswith('beethoven_op031_no2') and piece.endswith('_mv1')):
+            continue
+        print(piece)
+            
         part = partitura.load_musicxml(files['xml'].pop(), validate=False)
-        for n in part.iter_all(partitura.score.GenericNote, include_subclasses=True):
-            if not isinstance(n, partitura.score.GraceNote):
-                n.symbolic_duration = None
+        # for n in part.iter_all(partitura.score.GenericNote, include_subclasses=True):
+        #     if not isinstance(n, partitura.score.GraceNote):
+        #         n.symbolic_duration = None
         partitura.score.expand_grace_notes(part)
 
         # with open('/tmp/pretty.txt', 'w') as pretty:
@@ -44,7 +48,11 @@ def main():
             print(match)
 
             ppart, alignment = partitura.load_match(match, first_note_at_zero=True)
-            
+
+            for a in alignment:
+                if 'score_id' in a:
+                    a['score_id'] = a['score_id'].split('-')[0]
+                    
             dyn_codec = pc.OnsetwiseDecompositionDynamicsCodec()
             time_codec = pc.TimeCodec(normalization='standardized_bp')
             perf_codec = pc.PerformanceCodec(time_codec, dyn_codec)

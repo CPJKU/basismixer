@@ -6,6 +6,7 @@ from collections import defaultdict
 
 import numpy as np
 
+
 def to_memmap(a, folder=None):
 
     if folder:
@@ -15,29 +16,41 @@ def to_memmap(a, folder=None):
     np.save(f.name, a)
     a_memmap = np.load(f.name, mmap_mode='r')
     return a_memmap
-    
-    
-def pair_files(dir_dict, remove_incomplete=True, full_path=True, by_prefix=True):
-    """Pair files in directories; dir_dict is of form (label: directory)
 
-    TODO: complete docs below:
+
+def pair_files(folder_dict, full_path=True,
+               by_prefix=True):
+    """Pair files in different directories by their filenames.
+
+    The function returns a dictionary where the keys are the matched
+    part of the filenames and the values are dictonaries. The keys of
+    each of these dictionaries coincide with the keys in
+    `folder_dict`. The value for a given key is a set of paired files
+    in the corresponding folder.
 
     Parameters
     ----------
-    dir_dict : type
-        Description of `dir_dict`
-    remove_incomplete : type, optional
-        Description of `remove_incomplete`
+    folder_dict : dict
+        Dictionary with arbitrary labels as keys and directory paths
+        as values.
+    full_path : bool, optional
+        When True, return the full paths of the files. Otherwise only
+        filenames are returned, omitting the directories.Defaults to
+        True.
+    by_prefix : bool, optional
+        When True two files in different directories are paired
+        whenever one filename (excluding the extension) is a prefix of
+        the other. Otherwise files are only paired when the filenames
+        excluding the extensions are equal. Defaults to True.
 
     Returns
     -------
-    type
-        Description of return value
+    dict
+        A dictionary with the paired files..
 
     """
-    # result = defaultdict(dict)
     result = defaultdict(lambda: defaultdict(set))
-    for label, directory in dir_dict.items():
+    for label, directory in folder_dict.items():
         for f in os.listdir(directory):
             path = os.path.join(directory, f)
             if os.path.isfile(path):
@@ -70,12 +83,12 @@ def pair_files(dir_dict, remove_incomplete=True, full_path=True, by_prefix=True)
         for n in merged:
             del result[n]
 
-    if remove_incomplete:
-        labels = set(dir_dict.keys())
-        todo_delete = [k for k, k_labels in result.items()
-                       if not set(k_labels) == labels]
-        for k in todo_delete:
-            del result[k]
+    # remove_incomplete items
+    labels = set(folder_dict.keys())
+    todo_delete = [k for k, k_labels in result.items()
+                   if not set(k_labels) == labels]
+    for k in todo_delete:
+        del result[k]
 
     return result
 
@@ -107,12 +120,12 @@ def clip(v, low=0, high=127):
         v[too_high] = high
 
 
-def extract_matched_performance(score_part, performed_part,
-                                snote_idx, note_idx):
+# def extract_matched_performance(score_part, performed_part,
+#                                 snote_idx, note_idx):
 
-    score_array = score_part.note_array
+#     score_array = score_part.note_array
 
-    perf_array = performed_part.note_array
+#     perf_array = performed_part.note_array
 
-    score_info = score_array[snote_idx]
-    perf_info = perf_array[note_idx]
+#     score_info = score_array[snote_idx]
+#     perf_info = perf_array[note_idx]

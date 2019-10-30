@@ -1,52 +1,31 @@
 #!/usr/bin/env python
 
 import sys
-from collections import defaultdict
 import numpy as np
 from scipy.interpolate import interp1d
 
 import partitura.score as score
 
-def make_basis(part, names):
+
+def make_basis(part, basis_functions):
     acc = []
     cs = 0
-    for name in names:
-        # get function by name from module
-        func = getattr(sys.modules[__name__], name)
+    for bf in basis_functions:
+        if isinstance(bf, str):
+            # get function by name from module
+            func = getattr(sys.modules[__name__], bf)
+        else:
+            func = bf
+
         bf, bn = func(part)
         # TODO: check that size of bf matches part.notes_tied
         acc.append((bf, bn, cs))
         cs += len(bn)
-        
+
     _data, _names, _offsets = zip(*acc)
     basis_data = np.column_stack(_data)
     basis_names = [n for ns in _names for n in ns]
     return basis_data, basis_names
-
-# OBSOLETE
-# def make_basis_old(part, basis_config):
-#     # targets = basis_config.keys()
-#     names = list(set(basis for basis_list in basis_config.values()
-#                      for basis in basis_list))
-#     acc = []
-#     cs = 0
-#     for name in names:
-#         func = getattr(sys.modules[__name__], name)
-#         bf, bn = func(part)
-#         acc.append((bf, bn, cs))
-#         cs += len(bn)
-        
-#     _data, _names, _offsets = zip(*acc)
-#     basis_data = np.column_stack(_data)
-#     basis_names = [n for ns in _names for n in ns]
-
-#     target_basis_idx = defaultdict(list)
-#     for target, t_names in basis_config.items():
-#         for bf, bn, offset in zip(names, _names, _offsets):
-#             if bf in t_names:
-#                 target_basis_idx[target].extend(range(offset, offset+len(bn)))
-
-#     return basis_data, basis_names, target_basis_idx # 
 
 
 def odd_even_basis(part):
@@ -58,15 +37,17 @@ def odd_even_basis(part):
         basis_names = ['odd']
     return W, basis_names
 
+
 def polynomial_pitch_basis(part):
 
     basis_names = ['pitch', 'pitch^2', 'pitch^3']
+    max_pitch = 127
+    pitches = np.array(
+        [n.midi_pitch for n in part.notes_tied]).astype(np.float)
+    W = np.column_stack((pitches / max_pitch,
+                         pitches**2 / max_pitch**2,
+                         pitches**3 / max_pitch**3))
 
-    pitches = np.array([n.midi_pitch for n in part.notes_tied]).astype(np.float)
-    W = np.column_stack((pitches/127,
-                         pitches**2/127**2,
-                         pitches**3/127**3))
-    
     return normalize(W), basis_names
 
 
@@ -85,11 +66,12 @@ def duration_basis(part):
 
 def loudness_direction_basis(part):
     onsets = np.array([n.start.t for n in part.notes_tied])
+    N = len(onsets)
 
-    for d in directions:
-        print(d, d.start.t, d.end.t)
+    directions = list(part.iter_all(
+        score.LoudnessDirection, include_subclasses=True))
 
-    def direction_to_basis_name(d):
+    def to_name(d):
         if isinstance(d, score.ConstantLoudnessDirection):
             return d.text
         elif isinstance(d, score.ImpulsiveLoudnessDirection):
@@ -101,8 +83,8 @@ def loudness_direction_basis(part):
 
     basis_by_name = {}
     for d in directions:
-        j, bf = basis_by_name.setdefault(direction_to_basis_name(d),
-                                   (len(basis_by_name), np.zeros(len(onsets))))
+        j, bf = basis_by_name.setdefault(to_name(d),
+                                         (len(basis_by_name), np.zeros(N)))
         bf += basis_function_activation(d)(onsets)
 
     W = np.empty((len(onsets), len(basis_by_name)))
@@ -116,10 +98,12 @@ def loudness_direction_basis(part):
 
 def tempo_direction_basis(part):
     onsets = np.array([n.start.t for n in part.notes_tied])
+    N = len(onsets)
 
-    directions = list(part.iter_all(score.TempoDirection, include_subclasses=True))
+    directions = list(part.iter_all(
+        score.TempoDirection, include_subclasses=True))
 
-    def direction_to_basis_name(d):
+    def to_name(d):
         if isinstance(d, score.ResetTempoDirection):
             ref = d.reference_tempo
             if ref:
@@ -135,8 +119,8 @@ def tempo_direction_basis(part):
 
     basis_by_name = {}
     for d in directions:
-        j, bf = basis_by_name.setdefault(direction_to_basis_name(d),
-                                   (len(basis_by_name), np.zeros(len(onsets))))
+        j, bf = basis_by_name.setdefault(to_name(d),
+                                         (len(basis_by_name), np.zeros(N)))
         bf += basis_function_activation(d)(onsets)
 
     W = np.empty((len(onsets), len(basis_by_name)))
@@ -155,12 +139,14 @@ def basis_function_activation(direction):
                               score.DynamicTempoDirection)):
 
         if isinstance(direction, score.TempoDirection):
-            next_dir = next(direction.start.iter_next(score.ConstantTempoDirection), None)
+            next_dir = next(direction.start.iter_next(
+                score.ConstantTempoDirection), None)
         else:
-            next_dir = next(direction.start.iter_next(score.ConstantLoudnessDirection), None)
+            next_dir = next(direction.start.iter_next(
+                score.ConstantLoudnessDirection), None)
 
         if next_dir:
-            # TODO: when next_dir is too far away 
+            # TODO: when next_dir is too far away
             sustained_end = next_dir.start.t
         else:
             # no sustained activation
@@ -180,12 +166,12 @@ def basis_function_activation(direction):
              direction.end.t]
         y = [0, 1, 1, 0]
 
-    else: # impulsive
+    else:  # impulsive
         x = [direction.start.t - epsilon,
              direction.start.t,
              direction.start.t + epsilon]
         y = [0, 1, 0]
-    
+
     return interp1d(x, y, bounds_error=False, fill_value=0)
 
 
@@ -234,6 +220,8 @@ def articulation_basis(part):
     return W, names
 
 # for a subset of the articulations do e.g.
+
+
 def staccato_basis(part):
     W, names = articulation_basis(part)
     if 'staccato' in names:
@@ -283,6 +271,7 @@ def fermata_basis(part):
         W[onsets == ferm.start.t, 0] = 1
     return W, names
 
+
 def metrical_basis(part):
     notes = part.notes_tied
     ts_map = part.time_signature_map
@@ -322,27 +311,44 @@ def metrical_basis(part):
 
 def normalize(data, method='minmax'):
     """
-    Normalize the data in `data`. There are several normalization methods:
+    Normalize data in one of several ways.
+
+    The available normalization methods are:
 
     * minmax
-
-      Rescale `data` to the range `[0, 1]` by subtracting the minimum and dividing by
-      the range. If `data` is a 2d array, each column is rescaled to `[0, 1]`.
+      Rescale `data` to the range `[0, 1]` by subtracting the minimum
+      and dividing by the range. If `data` is a 2d array, each column is
+      rescaled to `[0, 1]`.
 
     * tanh
-
-      Rescale `data` to the interval `(-1, 1)` using `tanh`. Note that if `data`
-      is non-negative, the output interval will be `[0, 1)`.
+      Rescale `data` to the interval `(-1, 1)` using `tanh`. Note that
+      if `data` is non-negative, the output interval will be `[0, 1)`.
 
     * tanh_unity
+      Like "soft", but rather than rescaling strictly to the range (-1,
+      1), following will hold:
 
-      Like "soft", but rather than rescaling strictly to the range (-1, 1),
-      following will hold:
+      normalized = normalize(data, method="tanh_unity")
+      np.where(data==1) == np.where(normalized==1)
 
-          normalized = normalize(data, method="tanh_unity")
-          np.where(data==1) == np.where(normalized==1)
-
-      That is, that the target interval is `(-1/np.tanh(1), 1/np.tanh(1))`.
+      That is, the normalized data will equal one wherever the original data
+      equals one. The target interval is `(-1/np.tanh(1), 1/np.tanh(1))`.
+    
+    Parameters
+    ----------
+    data: ndarray
+        Data to be normalized
+    method: {'minmax', 'tanh', 'tanh_unity'}, optional
+        The normalization method. Defaults to 'minmax'.
+    
+    Returns
+    -------
+    ndarray
+        Normalized copy of the data
+    """
+    
+    """Normalize the data in `data`. There are several normalization
+    
     """
     if method == 'minmax':
         vmin = np.min(data, 0)
@@ -352,8 +358,6 @@ def normalize(data, method='minmax'):
         return np.tanh(data)
     elif method == 'tanh_unity':
         return np.tanh(data)/np.tanh(1)
-
-    
 
 
 # import logging
@@ -786,7 +790,7 @@ def normalize(data, method='minmax'):
 #             constant[-1].end.add_starting_object(cld)
 #             dd.append(cld)
 #             end.add_ending_object(cld)
-            
+
 #     return dd
 
 
@@ -925,7 +929,7 @@ def normalize(data, method='minmax'):
 #     names = ['vertical_interval_class_1',
 #              'vertical_interval_class_2',
 #              'vertical_interval_class_3']
-    
+
 #     @classmethod
 #     def makeBasis(cls, scorePart):
 
@@ -954,7 +958,6 @@ def normalize(data, method='minmax'):
 #                 vertical_intervals[slice(1, 4)]) / Q
 
 #         return FeatureBasis(W, cls.make_full_names())
-
 
 
 # class VerticalNeighborBasis(Basis):
@@ -1287,7 +1290,6 @@ def normalize(data, method='minmax'):
 #         return FeatureBasis(normalize(W), cls.make_full_names())
 
 
-
 # class MetricalBasis(Basis):
 #     meters = [(4, 4), (2, 2), (3, 4), (6, 8), (6, 4), (2, 8),
 #               (3, 8), (12, 8), (5, 4), (2, 4), (9, 8), (12, 16)]
@@ -1387,7 +1389,7 @@ def normalize(data, method='minmax'):
 #             W[i, 0] = np.mod(m_position, ts_num) / float(ts_num)
 
 #         return FeatureBasis(W, cls.make_full_names(cls.names))
-            
+
 
 # class RepeatBasis(Basis):
 #     names = ['repeat_end', 'repeat_end_short_ramp', 'repeat_end_med_ramp', 'repeat_end_wide_ramp']
