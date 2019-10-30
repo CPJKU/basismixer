@@ -95,10 +95,16 @@ def make_dataset(mxml_folder, match_folder, basis_functions, perf_codec, seq_len
     # total number of basis functions in the dataset
     n_basis = len(bf_idx_map)
 
+    output_names = perf_codec.parameter_names
+    bf_idx_inv_map = dict((v, k) for k, v in bf_idx_map.items())
+    input_names = [bf_idx_inv_map[i] for i in range(n_basis)]
+
     # create and concatenate the datasets for each performance
-    return ConcatDataset(
-        [BasisMixerDataSet(basis, idx, n_basis, targets, seq_len)
-         for basis, idx, targets in data])
+    dataset = ConcatDataset([BasisMixerDataSet(basis, idx, n_basis,
+                                               targets, seq_len)
+                             for basis, idx, targets in data])
+
+    return dataset, input_names, output_names
 
 
 class BasisMixerDataSet(Dataset):

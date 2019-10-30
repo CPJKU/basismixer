@@ -39,18 +39,19 @@ def main():
     time_codec = TimeCodec(normalization='standardized_bp')
     perf_codec = PerformanceCodec(time_codec, dyn_codec)
 
-    dataset = make_dataset(args.xmlfolder, args.matchfolder,
-                           basis_functions, perf_codec, seq_size)
-    LOGGER.info('Dataset has {} instances'.format(len(dataset)))
-
-    seq_size = 20
+    seq_len = 20
     batch_size = 10
 
+    dataset, in_names, out_names = make_dataset(args.xmlfolder, args.matchfolder,
+                                                basis_functions, perf_codec, seq_len)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-    for x, y in dataloader:
-        print(x.shape, y.shape)
+    for i, (x, y) in enumerate(dataloader):
+        LOGGER.info('batch {} x_shape: {} y_shape: {}'.format(i, x.shape, y.shape))
 
+    LOGGER.info('Dataset has {} instances'.format(len(dataset)))
+    LOGGER.info('Inputs: {}'.format(', '.join(in_names)))
+    LOGGER.info('Outputs: {}'.format(', '.join(out_names)))
         
 if __name__ == '__main__':
     main()
