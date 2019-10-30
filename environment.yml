@@ -6,12 +6,13 @@ channels:
 
 dependencies:
   - python=3
+  - cpuonly
+  - pytorch-cpu
   - numpy
   - scipy
   - matplotlib
   - ipython
   - jupyter
-  - pytorch
   - pip
   - tqdm
 
