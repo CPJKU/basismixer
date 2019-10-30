@@ -188,5 +188,5 @@ def onsetwise_to_notewise(onsetwise_input, unique_onset_idxs):
     n_notes = sum([len(uix) for uix in unique_onset_idxs])
     notewise_inputs = np.zeros(n_notes, dtype=onsetwise_input.dtype)
     for i, uix in enumerate(unique_onset_idxs):
-        notewise_predictions[uix] = onsetwise_input[[i]]
+        notewise_inputs[uix] = onsetwise_input[[i]]
     return notewise_inputs

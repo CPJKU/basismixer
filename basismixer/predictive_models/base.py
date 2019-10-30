@@ -36,19 +36,13 @@ class FullPredictiveModel(nn.Module):
     """Meta model for predicting an expressive performance
     """
 
-    def __init__(self, models_or_configs, input_names, output_names,
+    def __init__(self, models, input_names, output_names,
                  default_values={},
                  overlapping_output_strategy='FIFO'):
         super().__init__()
-
-        models = []
-        for m in models_or_configs:
-            if isinstance(m, nn.Module):
-                models.append(m)
-            else:
-                models.append(construct_model(cfg))
-
-        self.models = nn.ModuleList(models)
+        self.models = nn.ModuleList(
+            construct_model(m) if isinstance(m, dict) else m for m in models
+        )
         self.input_names = np.array(input_names)
         self.output_names = np.array(output_names)
         self.default_values = default_values

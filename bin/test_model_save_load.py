@@ -59,7 +59,7 @@ def main_test_save_load():
     full_model_config = dict(
         constructor = ['basismixer.predictive_models', 'FullPredictiveModel'],
         args=dict(
-            model_configs=model_configs,
+            models=model_configs,
             input_names=input_names,
             output_names=output_names,
             default_values=dict([(pn, 0) for pn in output_names])
