@@ -41,10 +41,14 @@ class FullPredictiveModel(nn.Module):
                  overlapping_output_strategy='FIFO'):
         super().__init__()
 
-        if isinstance(models_or_configs[0], nn.Module):
-            self.models = models_or_configs
-        elif isinstance(models_or_configs[0], dict):
-            self.models = nn.ModuleList([construct_model(cfg) for cfg in models_or_configs])
+        models = []
+        for m in models_or_configs:
+            if isinstance(m, nn.Module):
+                models.append(m)
+            else:
+                models.append(construct_model(cfg))
+
+        self.models = nn.ModuleList(models)
         self.input_names = np.array(input_names)
         self.output_names = np.array(output_names)
         self.default_values = default_values
