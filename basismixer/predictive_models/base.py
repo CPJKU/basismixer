@@ -6,6 +6,10 @@ import numpy as np
 import torch
 from torch import nn
 
+from basismixer.utils import (notewise_to_onsetwise,
+                              onsetwise_to_notewise,
+                              get_unique_onset_idxs)
+
 
 def get_object_from_location(location, name):
     module = importlib.import_module(location)
@@ -70,6 +74,8 @@ class FullPredictiveModel(nn.Module):
         if x.ndim != 2:
             raise ValueError('The inputs should be a 2D array')
 
+        unique_onset_idxs = get_unique_onset_idxs(score_onsets)
+
         _predictions = []
 
         for bf_idxs, model in zip(self.model_bf_idxs, self.models):
@@ -79,14 +85,14 @@ class FullPredictiveModel(nn.Module):
 
             # aggregate bfs per onset
             if model.input_type == 'onsetwise':
-                model_input, unique_onset_idxs = aggregate_onsetwise_bfs(model_input,
-                                                                         score_onsets)
+                model_input = notewise_to_onsetwise(model_input,
+                                                    unique_onset_idxs)
             # make predictions
             preds = model.predict(model_input)
 
             # expand predictions per each note
             if model.input_type == 'onsetwise':
-                preds = expand_onsetwise_preds(preds, unique_onset_idxs)
+                preds = onsetwise_to_notewise(preds, unique_onset_idxs)
 
             _predictions.append(preds)
 
@@ -207,31 +213,3 @@ class NNModel(nn.Module, PredictiveModel):
     def dtype(self, dtype):
         self._dtype = dtype
         self.type(dtype)
-
-
-def aggregate_onsetwise_bfs(notewise_inputs, score_onsets):
-    """Agregate basis functions per onset
-    """
-    unique_score_onsets = np.unique(score_onsets)
-    unique_onset_idxs = [np.where(score_onsets == u)[0]
-                         for u in unique_score_onsets]
-
-    onsetwise_notewise_inputs = np.zeros((len(unique_score_onsets),
-                                          notewise_inputs.shape[1]))
-
-    for i, uix in enumerate(unique_onset_idxs):
-        onsetwise_notewise_inputs[i] = notewise_inputs[uix].mean(0)
-
-    return onsetwise_notewise_inputs, unique_onset_idxs
-
-
-def expand_onsetwise_preds(onsetwise_predictions, unique_onset_idxs):
-    """Expand onsetwise predictions for each note
-    """
-    n_notes = sum([len(uix) for uix in unique_onset_idxs])
-    notewise_predictions = np.zeros(n_notes, dtype=onsetwise_predictions.dtype)
-
-    for i, uix in enumerate(unique_onset_idxs):
-        notewise_predictions[uix] = onsetwise_predictions[[i]]
-
-    return notewise_predictions

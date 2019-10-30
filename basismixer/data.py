@@ -8,12 +8,17 @@ from torch.utils.data import Dataset, ConcatDataset
 from partitura import load_musicxml, load_match
 from partitura.score import expand_grace_notes
 from basismixer.basisfunctions import make_basis
-from basismixer.utils import pair_files
+from basismixer.utils import (pair_files,
+                              get_unique_onset_idxs,
+                              notewise_to_onsetwise,
+                              onsetwise_to_notewise)
+
 
 LOGGER = logging.getLogger(__name__)
 
 
-def make_dataset(mxml_folder, match_folder, basis_functions, perf_codec, seq_len):
+def make_dataset(mxml_folder, match_folder, basis_functions, perf_codec, seq_len,
+                 aggregate_onsetwise=False):
     """Create a dataset from the MusicXML and Match files.
 
     Parameters
@@ -53,6 +58,8 @@ def make_dataset(mxml_folder, match_folder, basis_functions, perf_codec, seq_len
 
         # load the score
         part = load_musicxml(files['mxml'].pop())
+
+        # get indices of the unique onsets
         # expand grace note durations (necessary for correct computation of
         # targets)
         expand_grace_notes(part)
@@ -84,8 +91,15 @@ def make_dataset(mxml_folder, match_folder, basis_functions, perf_codec, seq_len
 
             # select the subset of rows in the `basis` array that have a
             # matching entry in the targets
-            basis_matched = basis[np.array(
-                [nid_dict[nid] for nid in snote_ids])]
+
+            matched_subset_idxs = np.array([nid_dict[nid] for nid in snote_ids])
+            basis_matched = basis[matched_subset_idxs]
+
+            if aggregate_onsetwise:
+                score_onsets = part.note_array[matched_subset_idxs]['onset']
+                unique_onset_idxs = get_unique_onset_idxs(score_onsets)
+                basis_matched = notewise_to_onsetwise(basis_matched, unique_onset_idxs)
+                targets = notewise_to_onsetwise(targets, unique_onset_idxs)
 
             data.append((basis_matched, bf_idx, targets))
 
@@ -132,7 +146,7 @@ class BasisMixerDataSet(Dataset):
         A basis function representation of K basis for N notes
     idx : ndarray, shape (K,)
         An array of indices into the total number of basis for each
-        basis in `basis`. The values in `idx` should be less then
+        basis in `basis`. The values in `idx` should be less than
         `n_basis`.
     n_basis : int
         The total number of basis functions
@@ -142,6 +156,10 @@ class BasisMixerDataSet(Dataset):
     seq_len : int, optional
         The sequence length. If `seq_len` > `N` the Dataset will have
         zero-length. Defaults to 1.
+    targets_idx : ndarray, shape(M, ) or None (optional)
+        An array of indices of the targets to use for training.
+        The values in `targets_idx` should be less than L. If `None`,
+        all targets in the dataset will be used.
 
     Attributes
     ----------
@@ -158,13 +176,17 @@ class BasisMixerDataSet(Dataset):
 
     """
 
-    def __init__(self, basis, idx, n_basis, targets, seq_len=1):
+    def __init__(self, basis, idx, n_basis, targets, seq_len=1, targets_idx=None):
 
         self.basis = basis
         self.idx = idx
         self.n_basis = n_basis
         self.targets = targets
         self.seq_len = seq_len
+        if targets_idx is None:
+            self.targets_idx = np.arange(targets.shape[1], dtype=np.int)
+        else:
+            self.targets_idx
 
     def __getitem__(self, i):
 
@@ -172,9 +194,9 @@ class BasisMixerDataSet(Dataset):
             raise IndexError
 
         x = np.zeros((self.seq_len, self.n_basis))
-        x[:, self.idx] = self.basis[i:i+self.seq_len]
+        x[:, self.idx] = self.basis[i:i + self.seq_len]
 
-        y = self.targets[i:i+self.seq_len, :]
+        y = self.targets[i:i + self.seq_len, self.targets_idx]
 
         return x, y
 

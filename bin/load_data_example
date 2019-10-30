@@ -4,6 +4,8 @@ import argparse
 import json
 import logging
 
+import numpy as np
+
 from torch.utils.data import DataLoader
 
 logging.basicConfig(level=logging.INFO)
@@ -22,6 +24,10 @@ def main():
         description="Construct a dataset from files in the specified folders")
     parser.add_argument("xmlfolder", help="Folder with MusicXML files")
     parser.add_argument("matchfolder", help="Folder with match files")
+    parser.add_argument("--onsetwise",
+                        help=("Aggregate inputs and "
+                              "targets for sequential models"),
+                        action='store_true', default=False)
     # parser.add_argument("--basisconfig", type=str,
     #                     help=("JSON file specifying a set of basis functions "
     #                           "for each expressive target. If not specified "
@@ -36,14 +42,17 @@ def main():
                        'duration_basis'
                        ]
     dyn_codec = OnsetwiseDecompositionDynamicsCodec()
-    time_codec = TimeCodec(normalization='standardized_bp')
+    time_codec = TimeCodec(normalization='bp_standardized')
     perf_codec = PerformanceCodec(time_codec, dyn_codec)
 
     seq_len = 20
     batch_size = 10
 
     dataset, in_names, out_names = make_dataset(args.xmlfolder, args.matchfolder,
-                                                basis_functions, perf_codec, seq_len)
+                                                basis_functions, perf_codec, seq_len,
+                                                aggregate_onsetwise=args.onsetwise)
+    for d in dataset.datasets:
+        d.targets_idx = np.array([0, 2])
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     for i, (x, y) in enumerate(dataloader):
@@ -52,6 +61,9 @@ def main():
     LOGGER.info('Dataset has {} instances'.format(len(dataset)))
     LOGGER.info('Inputs: {}'.format(', '.join(in_names)))
     LOGGER.info('Outputs: {}'.format(', '.join(out_names)))
-        
+
+    return dataset, in_names, out_names, dataloader
+
+
 if __name__ == '__main__':
-    main()
+    dataset, in_names, out_names, data_loader = main()
