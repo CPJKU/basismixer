@@ -1,28 +1,60 @@
 #!/usr/bin/env python
 
 import sys
+import logging
 import numpy as np
 from scipy.interpolate import interp1d
+import types
 
 import partitura.score as score
 
+LOGGER = logging.getLogger(__name__)
 
+class InvalidBasisException(Exception): pass
+
+def list_basis_functions():
+    module = sys.modules[__name__]
+    doc_indent = 4
+    for name in dir(module):
+        member = getattr(sys.modules[__name__], name)
+        if isinstance(member, types.FunctionType) and name.endswith('_basis'):
+            print('* {}'.format(name))
+            if member.__doc__:
+                print(' '*doc_indent + member.__doc__.replace('\n', ' '*doc_indent+'\n'))
+
+    
 def make_basis(part, basis_functions):
     acc = []
-    cs = 0
+
     for bf in basis_functions:
+
         if isinstance(bf, str):
             # get function by name from module
             func = getattr(sys.modules[__name__], bf)
-        else:
+        elif isinstance(member, types.FunctionType):
             func = bf
-
+        else:
+            LOGGER.warning('Ignoring unknown basis function {}'.format(bf))
+            
         bf, bn = func(part)
-        # TODO: check that size of bf matches part.notes_tied
-        acc.append((bf, bn, cs))
-        cs += len(bn)
 
-    _data, _names, _offsets = zip(*acc)
+        # check if the size and number of the basis function are correct
+        if bf.shape[1] != len(bn):
+            msg = ('number of basis names {} does not equal '
+                   'number of basis {}'.format(len(bn), bf.shape[1]))
+            raise InvalidBasisException(msg)
+        n_notes = len(part.notes_tied)
+        if len(bf) != n_notes:
+            msg = ('length of basis {} does not equal '
+                   'number of notes {}'.format(len(bf), n_notes))
+            raise InvalidBasisException(msg)
+
+        # prefix basis names by function name
+        bn = ['{}.{}'.format(func.__name__, n) for n in bn]
+
+        acc.append((bf, bn))
+
+    _data, _names = zip(*acc)
     basis_data = np.column_stack(_data)
     basis_names = [n for ns in _names for n in ns]
     return basis_data, basis_names
@@ -39,6 +71,18 @@ def odd_even_basis(part):
 
 
 def polynomial_pitch_basis(part):
+    """Polynomial pitch basis.
+    
+    Parameters
+    ----------
+    part: type
+        Description of `part`
+    
+    Returns
+    -------
+    type
+        Description of return value
+    """
 
     basis_names = ['pitch', 'pitch^2', 'pitch^3']
     max_pitch = 127
@@ -52,6 +96,19 @@ def polynomial_pitch_basis(part):
 
 
 def duration_basis(part):
+    """Duration basis.
+    
+    Parameters
+    ----------
+    part: type
+        Description of `part`
+    
+    Returns
+    -------
+    type
+        Description of return value
+    """
+    
 
     basis_names = ['duration']
 
@@ -231,38 +288,6 @@ def staccato_basis(part):
         return np.empty(len(W)), []
 
 
-# class GraceBasis(Basis):
-#     # names = ['grace', 'after_grace']
-#     names = ['appoggiatura', 'after_appoggiatura',
-#              'acciaccatura', 'before_acciaccatura']
-
-#     @classmethod
-#     def makeBasis(cls, scorePart):
-#         app_notes = [(i, n) for i, n in enumerate(scorePart.notes)
-#                      if hasattr(n, 'appoggiatura_group_id')]
-#         acc_notes = [(i, n) for i, n in enumerate(scorePart.notes)
-#                      if hasattr(n, 'acciaccatura_group_id')]
-
-#         W = np.zeros((len(scorePart.notes), len(cls.names)))
-
-#         for i, n in app_notes:
-#             if n.grace_type is None:
-#                 W[i, 1] = n.appoggiatura_duration
-#             else:
-#                 W[i, 0] = n.appoggiatura_idx + 1
-
-#         for i, n in acc_notes:
-#             if n.grace_type is None:
-#                 W[i, 3] = n.acciaccatura_duration
-#             else:
-#                 W[i, 2] = n.acciaccatura_idx + 1
-
-#         # main_notes = np.where(np.diff(W) < 0)[0] + 1
-#         # W = np.column_stack((W, np.zeros(W.shape[0])))
-#         # W[main_notes, 1] = 1
-#         return FeatureBasis(soft_normalize(W, preserve_unity=True), cls.make_full_names())
-
-
 def fermata_basis(part):
     names = ['fermata']
     onsets = np.array([n.start.t for n in part.notes_tied])
@@ -360,35 +385,6 @@ def normalize(data, method='minmax'):
         return np.tanh(data)/np.tanh(1)
 
 
-# import logging
-# from operator import attrgetter
-# from collections import defaultdict
-
-# import numpy as np
-# # from scipy import interpolate
-# import scipy.stats
-# from scipy.interpolate import interp1d
-
-# from utils.basisUtilities import (normalize, soft_normalize,
-#                                   FeatureBasis,
-#                                   self_sim_conv_absolute,
-#                                   self_sim_conv_proportional,
-#                                   interpolate_feature)
-# from lbm.extra.utils.container_utils import partition
-# from lbm.timecodec import unique_onset_idx
-# from extra.data_handling.scoreontology import (
-#     Note, TimeSignature, Measure, Slur, Repeat,
-#     KeySignature,
-#     TempoDirection,
-#     ConstantTempoDirection,
-#     DynamicTempoDirection,
-#     ResetTempoDirection,
-#     LoudnessDirection,
-#     DynamicLoudnessDirection,
-#     ConstantLoudnessDirection,
-#     ImpulsiveLoudnessDirection)
-
-
 # from extra.utils.data_utils import smooth
 # from extra.data_handling.sparse_feature_extraction import (
 #     scorepart_to_notes,
@@ -403,38 +399,6 @@ def normalize(data, method='minmax'):
 #     KEYS)
 
 # # from extra.data_handling.annotation_tokenizer import tokenizer, TokenizeException
-
-# # import IR_parser as ir
-# LOGGER = logging.getLogger(__name__)
-
-
-# class Basis(object):
-#     names = []
-
-#     @classmethod
-#     def make_full_names(cls, names=None):
-#         """
-#         Return a list of basis function names prepended with the name of the Basis
-#         class producing the functions. For Basis classes where the number of
-#         basis fuctions is not known in advance (because they depend on the
-#         information in the score), the list of basis function names to be
-#         produced can be provided through `names`.
-
-#         Parameters
-#         ----------
-#         names: list, optional
-#             List of basis function names
-
-#         Returns
-#         -------
-#         list
-#             List of basis function names, with Basis class name prepended
-#         """
-
-#         if names is None:
-#             names = cls.names
-#         return ['.'.join((cls.__name__, name)) for name in names]
-
 
 # class NoteCenteredPianoRollBasis(Basis):
 #     # lowest_pitch = 21
@@ -583,303 +547,6 @@ def normalize(data, method='minmax'):
 #         assert np.sum(np.sum(W, 1) > 0) == W.shape[0]
 #         W = np.column_stack((W, np.log2(ioi)))
 #         return FeatureBasis(soft_normalize(W), cls.make_full_names())
-
-
-# # def makeLocalDirectionFeature(onsets, direction):
-# #     epsilon = 1e-6
-# #     if isinstance(direction, DynamicLoudnessDirection):
-# #         d = np.array([(direction.start.t, 0),
-# #                       (direction.end.t, 1),
-# #                       (direction.end.t + epsilon, 0.0)])
-# #     elif isinstance(direction, ConstantLoudnessDirection):
-# #         end = onsets[-1]
-# #         if direction.start.next != None:
-# #             nextd = direction.start.get_next_of_type(ConstantLoudnessDirection)
-# #             if nextd != None and len(nextd) > 0:
-# #                 end = nextd[0].start.t
-
-# #         d = np.array([(direction.start.t - epsilon, 0),
-# #                       (direction.start.t, 1),
-# #                       (end, 1),
-# #                       (end + epsilon, 0)])
-# #         d2 = np.array([(direction.start.t - 8 - epsilon, 0),
-# #                        (direction.start.t, 1),
-# #                        (direction.start.t + 2, 0),
-# #                        ])
-# #         return np.column_stack((interpolate_feature(onsets, d),
-# # interpolate_feature(onsets, d1),
-# #                                 interpolate_feature(onsets, d2)))
-# #     else:
-# #         d = np.array([(direction.start.t - epsilon, 0),
-# #                       (direction.start.t, 1),
-# #                       (direction.start.t + epsilon, 0)])
-# #     return interpolate_feature(onsets, d)
-
-
-# def make_local_tempo_direction_feature(onsets, direction):
-#     constant_type = ConstantTempoDirection
-#     dynamic_type = DynamicTempoDirection
-
-#     epsilon = 1e-6
-
-#     last_time = onsets[-1]
-#     # assert last_time == np.max(onsets)
-#     # if direction.end is None:
-#     #     if isinstance(direction, dynamic_type):
-#     #         nextd = direction.start.get_next_of_type(constant_type)
-#     #         if len(nextd) > 0:
-#     #             direction_end_t = max(direction.start.t + epsilon,
-#     #                                   nextd[0].start.t - epsilon)
-#     #         else:
-#     #             direction_end_t = last_time + 1
-#     # elif isinstance(direction, constant_type):
-#     # nextd = direction.start.get_next_of_type(constant_type)
-#     # if len(nextd) > 0 and nextd[0].text != u'a_tempo':
-#     # direction_end_t = max(direction.start.t + epsilon,
-#     # nextd[0].start.t - epsilon)
-#     # else:
-#     # direction_end_t = last_time + 1
-#     # else:
-#     # direction_end_t = last_time + 1
-#     # else:
-#     #     direction_end_t = direction.end.t
-
-#     if isinstance(direction, dynamic_type):
-#         if direction.end is None:
-#             end = last_time + 1
-#             nextd = direction.start.get_next_of_type(constant_type)
-#             if len(nextd) > 0:
-#                 end = nextd[0].start.t
-#         else:
-#             end = direction.end.t
-
-#         d = np.array([(direction.start.t, 0),
-#                       (end - epsilon, 1),
-#                       (end, 0.0)])
-
-#     elif isinstance(direction, constant_type):
-#         end = last_time + 1
-#         nextd = direction.start.get_next_of_type(constant_type)
-#         if len(nextd) > 0 and nextd[0].text not in (u'a_tempo', u'in_tempo'):
-#             end = nextd[0].start.t
-
-#         d = np.array([(direction.start.t - epsilon, 0),
-#                       (direction.start.t, 1),
-#                       (end - epsilon, 1),
-#                       (end, 0)])
-#         return interpolate_feature(onsets, d)
-#     else:
-#         d = np.array([(direction.start.t - epsilon, 0),
-#                       (direction.start.t, 1),
-#                       (direction.start.t + epsilon, 0)])
-#     return interpolate_feature(onsets, d)
-
-
-# class TempoAnnotationBasis(Basis):
-#     @classmethod
-#     def makeBasis(cls, scorePart):
-#         return cls._makeBasis(scorePart, indicator=False)
-
-#     @classmethod
-#     def _makeBasis(cls, scorePart, indicator):
-#         """
-#         Make basis functions with temporary effects, one basis
-#         function for each type of mark
-#         """
-#         epsilon = 1e-4
-#         onsets = np.array([n.start.t for n in scorePart.notes])
-#         directions = [x for x in scorePart.timeline.get_all_of_type(TempoDirection, include_subclasses=True)
-#                       if not isinstance(x, ResetTempoDirection) or x.text != 'a_tempo']
-#         # d_directions = scorePart.timeline.get_all_of_type(DynamicTempoDirection)
-#         # for d in directions:
-#         #     print(d)
-#         #     print(d.start.t, d.end.t if d.end else None)
-
-#         # directions = scorePart.get_tempo_directions()
-#         first_tempo = next((d for d in directions if
-#                             isinstance(d, ConstantTempoDirection)),
-#                            None)
-
-#         direction_names = [x.text for x in directions]
-#         dir_by_end_times = dict((x.end and x.end.t, x) for x in directions)
-#         # print(direction_names)
-#         # for n in direction_names:
-#         #     try:
-#         #         print(tokenizer.tokenize(n)[0].value)
-#         #     except TokenizeException:
-#         #         pass
-
-#         tempo_1 = 'tempo_1'
-#         tempo_1_referent = tempo_1
-
-#         for d in directions:
-#             if d.text == tempo_1:
-#                 if first_tempo and first_tempo.text != tempo_1:
-#                     print('setting {} at {} to {}'.format(d.text, d.start.t, first_tempo.text))
-#                     d.text = first_tempo.text
-#             elif d.text == 'a_tempo':
-#                 print('a tempo', dir_by_end_times.get(d.start.t, None))
-
-#         # exclude a_tempo:
-#         # names = sorted(set(d.text for d in directions
-#         #                    if d.text != 'a_tempo'))
-#         names = sorted(set(d.text for d in directions))
-
-#         name_to_idx = dict((name, idx) for idx, name in
-#                            enumerate(names))
-#         W = np.zeros((len(onsets), len(names)))
-#         for i, d in enumerate(directions):
-#             if d.text not in name_to_idx:
-#                 continue
-#             j = name_to_idx[d.text]
-
-#             if indicator:
-#                 W[:, j] += make_indicator_direction(onsets, d)
-#             else:
-#                 W[:, j] += make_local_tempo_direction_feature(onsets, d)
-
-#         assert W.shape[1] == len(names)
-#         # assert np.all(np.sum(W, 1) > 0)
-#         # return FeatureBasis(soft_normalize(W, preserve_unity=True), cls.make_full_names(names))
-#         # print(scorePart.pprint())
-#         return FeatureBasis(W, cls.make_full_names(names))
-
-# class IndicatorTempoAnnotationBasis(TempoAnnotationBasis):
-#     @classmethod
-#     def makeBasis(cls, scorePart):
-#         return cls._makeBasis(scorePart, indicator=True)
-
-
-# def make_indicator_direction(onsets, d):
-#     v = np.zeros(len(onsets))
-#     i = np.searchsorted(onsets, d.start.t)
-#     if i < len(v):
-#         v[i] = 1
-#     return v
-
-
-# def ensure_constant_at_start_end(dd, start, end, default_direction=u'mf'):
-#     """
-#     Make sure that there is a ConstantLoudnessDirection at the start and end
-#     time. An "mf" Direction is insterted as a default when a
-#     ConstantLoudnessDirection is missing.
-
-#     Parameters
-#     ----------
-
-#     Returns
-#     -------
-#     """
-
-#     constant = [d for d in dd
-#                 if isinstance(d, ConstantLoudnessDirection)]
-
-#     if not constant:
-#         cld = ConstantLoudnessDirection(default_direction)
-#         start.add_starting_object(cld)
-#         dd.insert(0, cld)
-#         end.add_ending_object(cld)
-#     else:
-#         if constant[0].start.t > start:
-#             cld = ConstantLoudnessDirection(default_direction)
-#             start.add_starting_object(cld)
-#             dd.insert(0, cld)
-#             constant[0].start.add_ending_object(cld)
-#         if constant[-1].end.t < end:
-#             cld = ConstantLoudnessDirection(default_direction)
-#             constant[-1].end.add_starting_object(cld)
-#             dd.append(cld)
-#             end.add_ending_object(cld)
-
-#     return dd
-
-
-# def fill_out_loudness_direction_times(directions, max_time):
-#     return fill_out_direction_times(directions, max_time,
-#                                     ConstantLoudnessDirection,
-#                                     DynamicLoudnessDirection,
-#                                     ImpulsiveLoudnessDirection)
-
-# def fill_out_tempo_direction_times(directions, max_time):
-#     return fill_out_direction_times(directions, max_time,
-#                                     ConstantTempoDirection,
-#                                     DynamicTempoDirection)
-
-# def fill_out_direction_times(directions, max_time, constant_type, dynamic_type, impulsive_type=None):
-#     # for all dynamic: if unset end_time, end_time=timeOfNextConstant or lastTime
-#     # for all impulsive: end_time = begin_time+epsilon
-#     # for all constant: end_time = max(begin_time+epsilon,timeOfNextConstant)
-#     # for last constant: end_time = lastTime
-#     for i, d in enumerate(directions):
-#         if isinstance(d, dynamic_type):
-#             # print(d.text, d.start.t, d.end.t)
-#             d.intermediate.append(d.end)
-#             d.end = None
-
-#     for i, d in enumerate(directions):
-
-#         if impulsive_type and isinstance(d, impulsive_type):
-#             directions[i].end = directions[i].start
-#         else:
-
-#             if d.end == None:
-
-#                 # if type(d) in [ReferenceTempoDirection,ConstantTempoDirection]:
-#                 #     next_list = [ReferenceTempoDirection,ConstantTempoDirection]
-#                 # else:
-#                 #     next_list = [ReferenceTempoDirection,ConstantLoudnessDirection,ConstantTempoDirection]
-#                 # n = d.get_next_of_types(next_list)
-#                 n = d.start.get_next_of_type(constant_type)
-#                 if n:
-#                     directions[i].end = max(d.start, n[0].start)
-#                 else:
-#                     directions[i].end = max_time
-
-#     return directions
-
-
-# class LoudnessAnnotationBasis(Basis):
-#     # names = LoudnessDirection.get_labels()
-#     directions = [LoudnessDirection]
-
-#     @classmethod
-#     def makeBasis(cls, scorePart):
-#         """
-#         Make basis functions with temporary effects, one basis
-#         function for each type of mark
-#         """
-#         epsilon = 1e-4
-#         onsets = np.array([n.start.t for n in scorePart.notes])
-
-#         directions = scorePart.get_loudness_directions()
-#         directions = fill_out_loudness_direction_times(
-#             directions, scorePart.timeline.points[-1])
-
-#         directions = ensure_constant_at_start_end(
-#             directions,
-#             scorePart.timeline.points[0],
-#             scorePart.timeline.points[-1])
-
-#         name2idx = {}
-#         c = 0
-#         names = []
-#         for i, d in enumerate(directions):
-#             n = d.text
-#             if name2idx.has_key(n):
-#                 continue
-#             else:
-#                 name2idx[n] = c
-#                 c += 1
-#                 names.append(n)
-
-#         # W = np.zeros((len(onsets),len(u_names)))
-#         W = np.zeros((len(onsets), c))
-#         for i, d in enumerate(directions):
-#             j = name2idx[d.text]
-#             W[:, j] += make_local_loudness_direction_feature(onsets, d)
-#         assert W.shape[1] == len(names)
-#         return FeatureBasis(soft_normalize(W, preserve_unity=True), cls.make_full_names(names))
-
 
 # class ExtremePitchBasis(Basis):
 
@@ -1185,76 +852,6 @@ def normalize(data, method='minmax'):
 
 #         return FeatureBasis(W, cls.make_full_names())
 
-#     @classmethod
-#     def makeBasis_old(cls, scorePart):
-#         basis_level = .25
-#         slurs = scorePart.timeline.get_all_of_type(Slur)
-#         if len(slurs) == 0:
-#             W = np.zeros((len(scorePart.notes), 2), dtype=np.float)
-#         else:
-#             W = np.zeros((len(scorePart.notes), 2), dtype=np.float)
-
-#             ss = np.array([(s.voice, s.start.t, s.end.t) for s in slurs])
-
-#             # begin make arch
-#             onsets = np.array([n.start.t for n in scorePart.notes])
-#             first = np.min(onsets)
-#             last = np.max(onsets)
-#             eps = 10**-4
-
-#             for v, start, end in ss:
-#                 tmap = np.array([[min(first, start - eps),  basis_level],
-#                                  [start - eps,              basis_level],
-#                                  [start,                  -.5],
-#                                  [end,                     .5],
-#                                  [end + eps,                basis_level],
-#                                  [max(last, end + eps),     basis_level]])
-#                 m = interp1d(tmap[:, 0], tmap[:, 1])
-#                 W[:, 1] -= m(onsets)**2
-
-#             correct = len(ss) * basis_level**2
-
-#             W[:, 1] += correct
-#             # end make arch
-
-#             start_idx = np.argsort(ss[:, 1])
-#             end_idx = np.argsort(ss[:, 2])
-
-#             ss_start = ss[start_idx,:]
-#             ss_end = ss[end_idx,:]
-
-#             idx = np.arange(ss.shape[0], dtype=np.int)
-
-#             idx_start = idx[start_idx]
-#             idx_end = idx[end_idx]
-
-#             ndnv = np.array([(n.start.t, n.voice) for n in scorePart.notes])
-
-#             start_before = np.searchsorted(
-#                 ss_start[:, 1], ndnv[:, 0], side='right')
-#             end_after = np.searchsorted(ss_end[:, 2], ndnv[:, 0], side='left')
-
-#             for i in range(ndnv.shape[0]):
-#                 spanning = tuple(
-#                     set(idx_start[:start_before[i]]).intersection(set(idx_end[end_after[i]:])))
-#                 W[i, 0] = 1 if ndnv[i, 1] in ss[spanning, 0] else 0
-
-#         return FeatureBasis(W, cls.make_full_names())
-
-
-# class DurationBasis(Basis):
-#     names = ['duration']
-
-#     @classmethod
-#     def makeBasis(cls, scorePart):
-#         nd = np.array([(n.start.t, n.end.t) for n in scorePart.notes])
-
-#         bm = scorePart.beat_map
-
-#         note_times_beat = bm(nd[:, 1]) - bm(nd[:, 0])
-#         W = note_times_beat
-#         W.shape = (-1, 1)
-#         return FeatureBasis(soft_normalize(W, preserve_unity=True), cls.make_full_names())
 
 # class ScoreTimeBasis(Basis):
 #     names = ['beat']
@@ -1290,107 +887,6 @@ def normalize(data, method='minmax'):
 #         return FeatureBasis(normalize(W), cls.make_full_names())
 
 
-# class MetricalBasis(Basis):
-#     meters = [(4, 4), (2, 2), (3, 4), (6, 8), (6, 4), (2, 8),
-#               (3, 8), (12, 8), (5, 4), (2, 4), (9, 8), (12, 16)]
-#     names = ['{0}_{1}_{2}'.format(beats, beat_type, position)
-#              for beats, beat_type in meters for position in range(beats)] + \
-#         ['{0}_{1}_weak'.format(beats, beat_type)
-#          for beats, beat_type in meters]
-
-#     @classmethod
-#     def makeBasis(cls, scorePart):
-#         nt = np.array([n.start.t for n in scorePart.notes])
-
-#         bm = scorePart.beat_map
-
-#         note_times_beat = bm(nt)
-
-#         ts = scorePart.timeline.get_all_of_type(TimeSignature)
-
-#         ms = scorePart.timeline.get_all_of_type(Measure)
-#         assert len(ts) > 0
-
-#         ts = np.array([(t.start.t, t.beats, t.beat_type) for t in ts])
-#         tsi = np.searchsorted(ts[:, 0], nt, side='right') - 1
-
-#         ms = bm(np.array([m.start.t for m in ms]))
-#         msi = np.searchsorted(ms, note_times_beat, side='right') - 1
-#         assert np.all(tsi >= 0)
-#         assert np.all(msi >= 0)
-#         eps = 10**-6
-#         N = len(scorePart.notes)
-#         basis_dict = defaultdict(lambda *x: np.zeros(N, dtype=np.float))
-
-#         names_set = set(cls.names)
-
-#         for i, n in enumerate(scorePart.notes):
-
-#             m_position = note_times_beat[i] - ms[msi[i]]
-#             if m_position % 1 > eps:
-#                 m_position_label = 'weak'
-#             else:
-#                 m_position_label = '{0:d}'.format(int(m_position))
-#             label = '{0:d}_{1:d}_{2}'.format(
-#                 ts[tsi[i], 1], ts[tsi[i], 2], m_position_label)
-
-#             if label in names_set:
-#                 basis_dict[label][i] = 1
-#             else:
-#                 LOGGER.warning(('Produced an unsupported metrical label {0}. '
-#                                 'Please check that time signatures are correct'
-#                             ).format(label))
-
-#         bases = tuple(basis_dict.items())
-#         W = np.column_stack([b[1] for b in bases])
-#         names = [b[0] for b in bases]
-#         return FeatureBasis(W, cls.make_full_names(names))
-
-
-# class BeatPhaseBasis(Basis):
-#     """
-#     This Basis function computes the relative location of an onset within the bar
-#     """
-#     names = ['beat_phase']
-
-#     @classmethod
-#     def makeBasis(cls, scorePart):
-#         nt = np.array([n.start.t for n in scorePart.notes])
-
-#         bm = scorePart.beat_map
-
-#         note_times_beat = bm(nt)
-
-#         ts = scorePart.timeline.get_all_of_type(TimeSignature)
-
-#         ms = scorePart.timeline.get_all_of_type(Measure)
-#         assert len(ts) > 0
-
-#         ts = np.array([(t.start.t, t.beats, t.beat_type) for t in ts])
-#         tsi = np.searchsorted(ts[:, 0], nt, side='right') - 1
-
-#         ms = bm(np.array([m.start.t for m in ms]))
-#         msi = np.searchsorted(ms, note_times_beat, side='right') - 1
-#         assert np.all(tsi >= 0)
-#         assert np.all(msi >= 0)
-#         eps = 10**-6
-#         N = len(scorePart.notes)
-
-#         W = np.zeros((N, 1))
-
-#         for i, n in enumerate(scorePart.notes):
-
-#             if note_times_beat[i] < eps:
-#                 m_position = note_times_beat[i]
-#             else:
-#                 m_position = note_times_beat[i] - ms[msi[i]]
-#             ts_num = ts[tsi[i], 1]
-#             # b_phase = np.mod(m_position, ts_num)
-#             W[i, 0] = np.mod(m_position, ts_num) / float(ts_num)
-
-#         return FeatureBasis(W, cls.make_full_names(cls.names))
-
-
 # class RepeatBasis(Basis):
 #     names = ['repeat_end', 'repeat_end_short_ramp', 'repeat_end_med_ramp', 'repeat_end_wide_ramp']
 
@@ -1415,76 +911,6 @@ def normalize(data, method='minmax'):
 
 #         W = np.array([repeat_smooth[n.end.t] for n in scorePart.notes])
 #         return FeatureBasis(normalize(W), cls.make_full_names())
-
-
-# class AccentBasis(Basis):
-#     names = ['accent']
-
-#     @classmethod
-#     def makeBasis(cls, scorePart):
-#         W = np.array([n.accent for n in scorePart.notes], dtype=np.int)
-#         W.shape = (-1, 1)
-#         return FeatureBasis(W, cls.make_full_names())
-
-
-# class StaccatoBasis(Basis):
-#     names = ['staccato']
-
-#     @classmethod
-#     def makeBasis(cls, scorePart):
-#         W = np.array([n.staccato for n in scorePart.notes], dtype=np.int)
-#         W.shape = (-1, 1)
-#         return FeatureBasis(W, cls.make_full_names())
-
-
-# class GraceBasis(Basis):
-#     # names = ['grace', 'after_grace']
-#     names = ['appoggiatura', 'after_appoggiatura',
-#              'acciaccatura', 'before_acciaccatura']
-
-#     @classmethod
-#     def makeBasis(cls, scorePart):
-#         app_notes = [(i, n) for i, n in enumerate(scorePart.notes)
-#                      if hasattr(n, 'appoggiatura_group_id')]
-#         acc_notes = [(i, n) for i, n in enumerate(scorePart.notes)
-#                      if hasattr(n, 'acciaccatura_group_id')]
-
-#         W = np.zeros((len(scorePart.notes), len(cls.names)))
-
-#         for i, n in app_notes:
-#             if n.grace_type is None:
-#                 W[i, 1] = n.appoggiatura_duration
-#             else:
-#                 W[i, 0] = n.appoggiatura_idx + 1
-
-#         for i, n in acc_notes:
-#             if n.grace_type is None:
-#                 W[i, 3] = n.acciaccatura_duration
-#             else:
-#                 W[i, 2] = n.acciaccatura_idx + 1
-
-#         # main_notes = np.where(np.diff(W) < 0)[0] + 1
-#         # W = np.column_stack((W, np.zeros(W.shape[0])))
-#         # W[main_notes, 1] = 1
-#         return FeatureBasis(soft_normalize(W, preserve_unity=True), cls.make_full_names())
-
-
-# class FermataBasis(Basis):
-#     names = ['fermata']
-
-#     @classmethod
-#     def makeBasis(cls, scorePart):
-#         W = np.array([n.fermata for n in scorePart.notes], dtype=np.int)
-#         W.shape = (-1, 1)
-#         return FeatureBasis(W, cls.make_full_names())
-
-
-# class ConstantBasis(Basis):
-#     names = ['constant']
-
-#     @classmethod
-#     def makeBasis(cls, scorePart):
-#         return FeatureBasis(np.ones((len(scorePart.notes), 1)), cls.make_full_names())
 
 
 # class HarmonicBasis(Basis):
@@ -1649,109 +1075,3 @@ def normalize(data, method='minmax'):
 #         return FeatureBasis(soft_normalize(W), cls.make_full_names())
 
 
-# class GroupBasis(Basis):
-#     # the number of size classes for the groups
-#     n_size = 10
-#     names = (['whole_piece_asc', 'whole_piece_des'] +
-#              [j.format(i) for i in range(n_size)
-#               for j in ('group_size{0}_asc', 'group_size{0}_asc')])
-
-#     # this should be set from outside before makeBasis is called
-#     data_folder = None
-
-#     @classmethod
-#     def makeBasis(cls, scorePart):
-
-#         # print scorePart.part_id, scorePart.part_name
-#         note_info = np.array([(n.midi_pitch, n.start.t,
-#                                n.end.t, int(n.id))
-#                               for n in scorePart.notes])
-
-#         # Initialize matrix of basis functions
-#         W = np.zeros((len(note_info), cls.n_size * 2 + 2 ))
-
-#         # Basis whole piece ascending and descending basis functions
-#         unique_onsets = np.unique(note_info[:, 1])
-#         ascending = np.linspace(0., 1., len(unique_onsets))
-#         descending = np.linspace(1., 0., len(unique_onsets))
-
-#         for onset, asc, desc in zip(
-#                 unique_onsets, ascending, descending):
-#             W[np.where(note_info[:, 1] == onset), 0] = asc
-#             W[np.where(note_info[:, 1] == onset), 1] = desc
-
-#         # print np.sort(note_info[:, 3])
-#         if cls.data_folder is not None:
-#             # Load grouping result file from Olivier's MiningSuite
-#             fn = os.path.join(cls.data_folder,
-#                               '{0}.txt'.format(scorePart.piece_name))
-#             if not os.path.exists(fn):
-#                 LOGGER.warning('Cannot find patterns for piece {0}'
-#                                .format(scorePart.piece_name))
-#             else:
-#                 groups = np.loadtxt(fn, delimiter=',')
-#                 # print(groups)
-#                 # print(scorePart.piece_name)
-
-#                 # check if the piece has more than one group
-#                 # (otherwise, the only group is the whole piece)
-#                 if len(groups) > 1:
-
-#                     # length of groups
-#                     group_length = groups[:, 1] - groups[:, 0]
-#                     # mean group length
-#                     g_mean = np.mean(group_length[1:])
-#                     # standard deviation of group lengths
-#                     g_std = np.std(group_length[1:])
-#                     # set the maximal group length
-#                     max_group_length = g_mean + 3 * g_std
-
-#                     # Use groups longer than one note and
-#                     # groups shorter than max allowed group length
-#                     valid_idx = np.logical_and(
-#                         group_length > 1,
-#                         group_length <= max_group_length)
-
-#                     # oldbins = np.linspace(1, max_group_length, cls.n_size + 1)
-#                     percentiles = np.arange(1, cls.n_size + 1) * 100. / cls.n_size
-#                     bins = np.percentile(group_length[valid_idx], percentiles)
-#                     # bins[-1] += 1
-#                     # import matplotlib.pyplot as plt
-#                     # plt.hist(group_length[valid_idx], 40)
-#                     # plt.show()
-
-#                     # classify the groups according to their length
-#                     # (into equal sized bins)
-#                     group_length_digitized = np.digitize(
-#                         group_length[valid_idx], bins, True)
-
-#                     for (start, end), gl in zip(groups[valid_idx],
-#                                                 group_length_digitized):
-#                         # Get the indices of each group
-#                         group_idx = np.logical_and(
-#                             note_info[:, -1] >= start,
-#                             note_info[:, -1] <= end)
-
-#                         # Onsets of a group
-#                         group_onsets = np.unique(
-#                             note_info[np.where(group_idx), 1])
-
-#                         # generate basis
-#                         ascending = np.linspace(0, 1, len(group_onsets))
-#                         descending = np.linspace(1, 0, len(group_onsets))
-
-#                         # Assign ascending and descending indices
-#                         # according to length of the group
-#                         a_idx = 2 + gl * 2
-#                         d_idx = 3 + gl * 2
-
-#                         # Write values of the matrix of basis functions
-#                         for onset, asc, desc in zip(
-#                                 group_onsets, ascending, descending):
-#                             W[np.where(note_info[:, 1] == onset), a_idx] = asc
-#                             W[np.where(note_info[:, 1] == onset), d_idx] = desc
-
-#         return FeatureBasis(W, cls.make_full_names())
-
-# if __name__ == '__main__':
-#     pass
