@@ -78,9 +78,9 @@ def show_performance(piece, performer, fig, axs, keep_zoom):
     measure_times = np.array([(m.start.t, '{}'.format(m.number)) for m in
                               part.iter_all(partitura.score.Measure)],
                              dtype=[('t', 'f4'), ('label', 'U100')])
-    # LOGGER.warning(f'{measure_times}')
+
     measure_times['t'] = bm(measure_times['t'])
-    # LOGGER.warning(f'{measure_times}')
+
     make_plot(fig, axs, targets, onsets=s_onsets, xlabel='Measure number',
               xticks=measure_times, keep_zoom=keep_zoom) # , title='{} {}'.format(piece, performer))
 
@@ -102,7 +102,6 @@ def make_plot(fig, axs, targets, onsets=None, xticks=None, title=None,
         if keep_zoom:
             xlims.append(list(ax.get_xlim()))
             ylims.append(list(ax.get_ylim()))
-            # LOGGER.warning(f'keeping {xlims[-1]} {ylims[-1]}')
         ax.clear()
 
     n_targets = len(names)
@@ -137,7 +136,6 @@ def make_plot(fig, axs, targets, onsets=None, xticks=None, title=None,
     for k, v in by_onset.items():
         by_onset[k] = np.array([i for i, _ in v])
 
-    # LOGGER.warning(f'{by_onset}')
     for i, name in enumerate(names):
         target = targets[name]
         targets[np.isnan(target)] = 0
@@ -154,7 +152,7 @@ def make_plot(fig, axs, targets, onsets=None, xticks=None, title=None,
         for t, v in by_onset.items():
             tt.append(t)
             vv.append(np.mean(target[v]))
-            # LOGGER.warning(f'{t} {v} {np.mean(target[v])}')
+
         # axs[i].plot(tt, vv, label='{} (mean)'.format(name))
         axs[i].plot(tt, vv)
         
@@ -163,7 +161,6 @@ def make_plot(fig, axs, targets, onsets=None, xticks=None, title=None,
     if keep_zoom:
         axs[0].set_xlim(xlims[0])
         for xlim, ylim, ax in zip(xlims, ylims, axs):
-            # LOGGER.warning(f'setting {xlims[-1]} {ylims[-1]}')
             ax.set_ylim(ylim)
 
     return fig, axs
@@ -229,13 +226,8 @@ def performance_player():
     def do_reset_zoom(v):
         nonlocal axs, fig
         for ax in axs:
-            # ax.set_xlim()
-            # ax.set_ylim()
             ax.autoscale()
             ax.autoscale_view()
-            LOGGER.warning(f'{ax.get_xlim()}')
-            # ax.set_ylim()
-
         fig.canvas.draw()  
 
     piece_dd.observe(partial(update_current_perf, item='piece'), names=['value'])
