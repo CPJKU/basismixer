@@ -34,7 +34,7 @@ def make_basis(part, basis_functions):
         if isinstance(bf, str):
             # get function by name from module
             func = getattr(sys.modules[__name__], bf)
-        elif isinstance(member, types.FunctionType):
+        elif isinstance(bf, types.FunctionType):
             func = bf
         else:
             LOGGER.warning('Ignoring unknown basis function {}'.format(bf))
