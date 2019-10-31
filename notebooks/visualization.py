@@ -59,9 +59,12 @@ def get_performance_info(piece, performer):
 
 def show_performance(piece, performer, fig, axs, keep_zoom):
     part, ppart, alignment = get_performance_info(piece, performer)
-    # targets, mbp = PERF_CODEC.encode(matched_score)
     targets, snote_ids = PERF_CODEC.encode(part, ppart, alignment)
 
+    # we convert to f8 to avoid numerical problems when computing means
+    dtype = [(n, 'f8') for n in targets.dtype.names]
+    targets = targets.astype(dtype)
+        
     part_by_id = dict((n.id, n) for n in part.notes_tied)
     ppart_by_id = dict((n['id'], n) for n in ppart.notes)
     s_to_p_id = dict((a['score_id'], a['performance_id'])
