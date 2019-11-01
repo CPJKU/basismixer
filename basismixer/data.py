@@ -57,7 +57,9 @@ def make_dataset(mxml_folder, match_folder, basis_functions, perf_codec, seq_len
         # will be a single musicxml file and multiple match files.
 
         # load the score
-        part = load_musicxml(files['mxml'].pop())
+        xml_fn = files['mxml'].pop()
+        LOGGER.info('Processing {}'.format(xml_fn))
+        part = load_musicxml(xml_fn)
 
         # get indices of the unique onsets
         # expand grace note durations (necessary for correct computation of
