@@ -52,6 +52,12 @@ def make_basis(part, basis_functions):
                    'number of notes {}'.format(len(bf), n_notes))
             raise InvalidBasisException(msg)
 
+        if np.any(np.logical_or(np.isnan(bf), np.isinf(bf))):
+            problematic = np.unique(np.where(np.logical_or(np.isnan(bf), np.isinf(bf)))[1])
+            msg = ('NaNs or Infs found in the following basis: {} '
+                   .format(', '.join(np.array(bn)[problematic])))
+            raise InvalidBasisException(msg)
+        
         # prefix basis names by function name
         bn = ['{}.{}'.format(func.__name__, n) for n in bn]
 
@@ -192,15 +198,18 @@ def articulation_direction_basis(part):
         return d.text
 
     basis_by_name = {}
+
     for d in directions:
-        print(d, d.start.t, d.end.t)
+
         j, bf = basis_by_name.setdefault(to_name(d),
                                          (len(basis_by_name), np.zeros(N)))
         bf += basis_function_activation(d)(onsets)
 
     W = np.empty((len(onsets), len(basis_by_name)))
     names = [None] * len(basis_by_name)
+
     for name, (j, bf) in basis_by_name.items():
+
         W[:, j] = bf
         names[j] = name
 
@@ -316,8 +325,6 @@ def articulation_basis(part):
     return W, names
 
 # for a subset of the articulations do e.g.
-
-
 def staccato_basis(part):
     W, names = articulation_basis(part)
     if 'staccato' in names:
