@@ -9,14 +9,11 @@ import numpy as np
 import torch
 
 from torch.utils.data import DataLoader
+from torch.utils.data.sampler import SubsetRandomSampler
+
 
 logging.basicConfig(level=logging.INFO)
 
-from basismixer import (BASIS_CONFIG_EXAMPLE,
-                        OnsetwiseDecompositionDynamicsCodec,
-                        TimeCodec,
-                        PerformanceCodec,
-                        make_dataset)
 from basismixer.predictive_models import (construct_model,
                                           RecurrentModel,
                                           SupervisedTrainer,
@@ -26,34 +23,37 @@ from basismixer.utils import load_pyc_bz, save_pyc_bz
 LOGGER = logging.getLogger(__name__)
 
 CONFIG = [
-    dict(basis_functions=['polynomial_pitch_basis',
-                          'loudness_direction_basis',
-                          'tempo_direction_basis',
-                          'articulation_basis',
-                          'duration_basis',
-                          'fermata_basis',
-                          'metrical_basis'],
+    dict(basis_functions='from_dataset',
+         # basis_functions=['polynomial_pitch_basis',
+         #                   'loudness_direction_basis',
+         #                   'tempo_direction_basis',
+         #                   'articulation_basis',
+         #                   'duration_basis',
+         #                   'fermata_basis',
+         #                   'metrical_basis'],
          parameter_names=['velocity_trend', 'timing', 'log_articulation'],
          constructor=['basismixer.predictive_models', 'FeedForwardModel'],
          args=dict(
              hidden_size=128,
              input_type='notewise'
-    ),
-        train_args=dict(
-            optimizer=dict(constructor='Adam',
-                           lr=1e-4),
-            epochs=3,
-            save_freq=1,
-            early_stopping=100
-    )
-    ),
-    dict(basis_functions=['polynomial_pitch_basis',
-                          'loudness_direction_basis',
-                          'tempo_direction_basis',
-                          'articulation_basis',
-                          'duration_basis',
-                          'fermata_basis',
-                          'metrical_basis'],
+         ),
+         train_args=dict(
+             optimizer=dict(constructor='Adam',
+                            lr=1e-4),
+             epochs=3,
+             save_freq=1,
+             early_stopping=100,
+             batch_size=10,
+         )
+         ),
+    dict(basis_functions='from_dataset',
+         # basis_functions=['polynomial_pitch_basis',
+         #                  'loudness_direction_basis',
+         #                  'tempo_direction_basis',
+         #                  'articulation_basis',
+         #                  'duration_basis',
+         #                  'fermata_basis',
+         #                  'metrical_basis'],
          parameter_names=['velocity_trend', 'beat_period_standardized'],
          constructor=['basismixer.predictive_models', 'RecurrentModel'],
          args=dict(
@@ -62,13 +62,16 @@ CONFIG = [
              hidden_size=64,
              input_type='onsetwise'),
          train_args=dict(
-        optimizer=dict(constructor='Adam',
-                       lr=1e-4),
-        epochs=3,
-        save_freq=1,
-        early_stopping=100
-    )
-    )
+             optimizer=dict(constructor='Adam',
+                            lr=1e-4),
+             epochs=3,
+             save_freq=1,
+             early_stopping=100,
+             batch_size=10,
+
+
+         )
+         )
 ]
 
 
@@ -76,7 +79,8 @@ CONFIG = [
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description="Train a Model given a dataset")
-    parser.add_argument("dataset", help="Dataset")
+    parser.add_argument("dataset", help="Dataset(s) for training the model",
+                        nargs='+')
     parser.add_argument("--model-config", help="Model Configuration",
                         default=CONFIG)
     parser.add_argument("--out-dir", help="Output Directory",
@@ -95,23 +99,61 @@ if __name__ == '__main__':
     json.dump(model_config, open(os.path.join(args.out_dir, 'model_config.json'), 'w'),
               indent=4)
 
-    # load dataset
-    batch_size = 10
-    data = load_pyc_bz(args.dataset)
-    dataset = data['dataset']
-    in_names = data['in_names']
-    out_names = data['out_names']
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    if len(args.dataset) == 1:
+        args.dataset *= len(model_config)
+    else:
+        if len(args.dataset) != len(model_config):
+            raise ValueError(
+                'The number of datasets should be the same '
+                'as the number of models to train. '
+                'Given {0} datasets and {1} models.'.format(
+                    len(args.dataset), len(model_config)))
 
+    rng = np.random.RandomState(1984)
+
+    datasets = []
     models = []
     target_idxs = []
     input_idxs = []
-    for config in model_config:
-        model_in_names = []
-        for bf in config['basis_functions']:
-            for name in in_names:
-                if name.startswith(bf):
-                    model_in_names.append(name)
+    valid_size = 0.20
+    for fn, config in zip(args.dataset, model_config):
+
+        #### Construct Dataset ####
+        batch_size = config['train_args'].pop('batch_size')
+        # load dataset
+        data = load_pyc_bz(fn)
+        dataset = data['dataset']
+        in_names = data['in_names']
+        out_names = data['out_names']
+
+        dataset_idx = np.arange(len(dataset))
+        rng.shuffle(dataset_idx)
+        len_valid = int(np.round(len(dataset) * valid_size))
+        valid_idx = dataset_idx[0:len_valid]
+        train_idx = dataset_idx[len_valid:]
+
+        train_sampler = SubsetRandomSampler(train_idx)
+        valid_sampler = SubsetRandomSampler(valid_idx)
+        train_dataloader = DataLoader(dataset,
+                                      batch_size=batch_size,
+                                      # shuffle=True,
+                                      sampler=train_sampler)
+        valid_dataloader = DataLoader(dataset,
+                                      batch_size=batch_size,
+                                      sampler=valid_sampler)
+
+        datasets.append((dataset, train_dataloader, valid_dataloader))
+
+        #### Construct Models ####
+
+        if config['basis_functions'] == 'from_dataset':
+            model_in_names = in_names
+        elif isinstance(config['basis_functions'], (list, tuple)):
+            model_in_names = []
+            for bf in config['basis_functions']:
+                for name in in_names:
+                    if name.startswith(bf):
+                        model_in_names.append(name)
 
         i_idxs = np.array([list(in_names).index(bf) for bf in model_in_names])
         input_idxs.append(i_idxs)
@@ -131,9 +173,12 @@ if __name__ == '__main__':
         config['args']['output_names'] = model_out_names
         config['args']['output_size'] = len(model_out_names)
 
-        models.append(construct_model(config))
+        model = construct_model(config)
+        models.append(model)
 
-    for model, config, t_idxs in zip(models, model_config, target_idxs):
+    for (model, (dataset, train_loader, val_loader),
+         config, t_idxs) in zip(models, datasets,
+                                model_config, target_idxs):
 
         for d in dataset.datasets:
             d.targets_idx = t_idxs
@@ -151,8 +196,8 @@ if __name__ == '__main__':
                                     train_loss=loss,
                                     optimizer=optimizer,
                                     valid_loss=loss,
-                                    train_dataloader=dataloader,
-                                    valid_dataloader=dataloader,
+                                    train_dataloader=train_loader,
+                                    valid_dataloader=val_loader,
                                     out_dir=model_out_dir,
                                     **t_config)
         trainer.train()
