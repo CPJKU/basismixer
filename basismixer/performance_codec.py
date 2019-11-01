@@ -370,61 +370,64 @@ def bp_rescale(tempo_params):
     return tempo_params['beat_period']
 
 
-def log_bp_scale(beat_period):
+def beat_period_log_scale(beat_period):
     return [np.log2(beat_period)]
 
 
-def log_bp_rescale(tempo_params):
-    return 2 ** tempo_params['log_bp']
+def beat_period_log_rescale(tempo_params):
+    return 2 ** tempo_params['beat_period_log']
 
 
-def bp_standardized_scale(beat_period):
-    std_bp = np.std(beat_period) * np.ones_like(beat_period)
-    mean_beat_period = np.mean(beat_period) * np.ones_like(beat_period)
-    bp_standardized = (beat_period - mean_beat_period) / std_bp
-    return [bp_standardized, mean_beat_period, std_bp]
+def beat_period_standardized_scale(beat_period):
+    beat_period_std = np.std(beat_period) * np.ones_like(beat_period)
+    beat_period_mean = np.mean(beat_period) * np.ones_like(beat_period)
+    beat_period_standardized = (beat_period - beat_period_mean) / beat_period_std
+    return [beat_period_standardized, beat_period_mean, beat_period_std]
 
 
-def bp_standardized_rescale(tempo_params):
-    return (tempo_params['bp_standardized'] * tempo_params['std_bp'] +
-            tempo_params['mean_beat_period'])
+def beat_period_standardized_rescale(tempo_params):
+    return (tempo_params['beat_period_standardized'] * tempo_params['beat_period_std'] +
+            tempo_params['beat_period_mean'])
 
 
-def bpr_scale(beat_period):
-    mean_beat_period = np.mean(beat_period) * np.ones_like(beat_period)
-    bpr = beat_period / mean_beat_period
-    return [bpr, mean_beat_period]
+def beat_period_ratio_scale(beat_period):
+    beat_period_mean = np.mean(beat_period) * np.ones_like(beat_period)
+    beat_period_ratio = beat_period / beat_period_mean
+    return [beat_period_ratio, beat_period_mean]
 
 
-def bpr_rescale(tempo_params):
-    return tempo_params['bpr'] * tempo_params['mean_beat_period']
+def beat_period_ratio_rescale(tempo_params):
+    return tempo_params['beat_period_ratio'] * tempo_params['beat_period_mean']
 
 
-def log_bpr_scale(beat_period):
-    bpr, mean_beat_period = bpr_scale(beat_period)
-    return [np.log2(bpr), mean_beat_period]
+def beat_period_ratio_log_scale(beat_period):
+    beat_period_ratio, beat_period_mean = beat_period_ratio_scale(beat_period)
+    return [np.log2(beat_period_ratio), beat_period_mean]
 
 
-def log_bpr_rescale(tempo_params):
-    return (2 ** tempo_params['log_bpr'] * tempo_params['mean_beat_period'])
+def beat_period_ratio_log_rescale(tempo_params):
+    return (2 ** tempo_params['beat_period_ratio_log'] * tempo_params['beat_period_mean'])
 
 
 TEMPO_NORMALIZATION = dict(
     beat_period=dict(scale=bp_scale,
                      rescale=bp_rescale,
                      param_names=('beat_period',)),
-    log_bp=dict(scale=log_bp_scale,
-                rescale=log_bp_rescale,
-                param_names=('log_bp',)),
-    bpr=dict(scale=bpr_scale,
-             rescale=bpr_rescale,
-             param_names=('bpr', 'mean_beat_period')),
-    log_bpr=dict(scale=log_bpr_scale,
-                 rescale=log_bpr_rescale,
-                 param_names=('log_bpr', 'mean_beat_period')),
-    bp_standardized=dict(scale=bp_standardized_scale,
-                         rescale=bp_standardized_rescale,
-                         param_names=('bp_standardized', 'mean_beat_period', 'std_bp'))
+    beat_period_log=dict(scale=beat_period_log_scale,
+                         rescale=beat_period_log_rescale,
+                         param_names=('beat_period_log',)),
+    beat_period_ratio=dict(scale=beat_period_ratio_scale,
+                           rescale=beat_period_ratio_rescale,
+                           param_names=('beat_period_ratio',
+                                        'beat_period_mean')),
+    beat_period_ratio_log=dict(scale=beat_period_ratio_log_scale,
+                               rescale=beat_period_ratio_log_rescale,
+                               param_names=('beat_period_ratio_log',
+                                            'beat_period_mean')),
+    beat_period_standardized=dict(scale=beat_period_standardized_scale,
+                                  rescale=beat_period_standardized_rescale,
+                                  param_names=('beat_period_standardized',
+                                               'beat_period_mean', 'beat_period_std'))
 )
 
 #### Codecs for Dynamics ####

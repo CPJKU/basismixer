@@ -18,7 +18,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def make_dataset(mxml_folder, match_folder, basis_functions, perf_codec, seq_len,
-                 aggregate_onsetwise=False):
+                 aggregate_onsetwise=False, valid_pieces=None):
     """Create a dataset from the MusicXML and Match files.
 
     Parameters

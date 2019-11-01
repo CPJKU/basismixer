@@ -28,7 +28,7 @@ def to_memmap(a, folder=None):
 
 
 def pair_files(folder_dict, full_path=True,
-               by_prefix=True):
+               by_prefix=True, valid_pieces=None):
     """Pair files in different directories by their filenames.
 
     The function returns a dictionary where the keys are the matched
@@ -59,15 +59,24 @@ def pair_files(folder_dict, full_path=True,
 
     """
     result = defaultdict(lambda: defaultdict(set))
+
+    if valid_pieces is None:
+        vpieces = []
+    else:
+        vpieces = valid_pieces
     for label, directory in folder_dict.items():
         for f in os.listdir(directory):
             path = os.path.join(directory, f)
             if os.path.isfile(path):
                 name = os.path.splitext(f)[0]
-                if full_path:
-                    result[name][label].add(path)
-                else:
-                    result[name][label].add(f)
+                if valid_pieces is None:
+                    vpieces.append(name)
+
+                if name in vpieces:
+                    if full_path:
+                        result[name][label].add(path)
+                    else:
+                        result[name][label].add(f)
 
     if by_prefix and result:
 

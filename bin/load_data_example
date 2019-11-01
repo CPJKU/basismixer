@@ -16,6 +16,8 @@ from basismixer import (BASIS_CONFIG_EXAMPLE,
                         PerformanceCodec,
                         make_dataset)
 
+from basismixer.utils import save_pyc_bz
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -32,6 +34,12 @@ def main():
                         help="Indices of the targets in the dataset",
                         nargs='+', type=int,
                         default=None)
+    parser.add_argument('--save-data',
+                        help='Filename for saving the data',
+                        default='/tmp/data.pyc.bz')
+    parser.add_argument('--valid-pieces',
+                        help='Text files containing name of valid pieces',
+                        default=None)
     # parser.add_argument("--basisconfig", type=str,
     #                     help=("JSON file specifying a set of basis functions "
     #                           "for each expressive target. If not specified "
@@ -43,10 +51,13 @@ def main():
                        'loudness_direction_basis',
                        'tempo_direction_basis',
                        'articulation_basis',
-                       'duration_basis'
+                       'duration_basis',
+                       # 'slur_basis',
+                       'fermata_basis',
+                       'metrical_basis'
                        ]
     dyn_codec = OnsetwiseDecompositionDynamicsCodec()
-    time_codec = TimeCodec(normalization='bp_standardized')
+    time_codec = TimeCodec(normalization='beat_period_standardized')
     perf_codec = PerformanceCodec(time_codec, dyn_codec)
 
     seq_len = 20
@@ -62,8 +73,16 @@ def main():
         for d in dataset.datasets:
             d.targets_idx = targets_idxs
 
-    for i, (x, y) in enumerate(dataloader):
-        LOGGER.info('batch {} x_shape: {} y_shape: {}'.format(i, x.shape, y.shape))
+    if args.save_data is not None:
+        LOGGER.info('Saving data to {0}'.format(args.save_data))
+        save_pyc_bz(dict(dataset=dataset,
+                         in_names=in_names,
+                         out_names=out_names),
+                    args.save_data)
+    else:
+
+        for i, (x, y) in enumerate(dataloader):
+            LOGGER.info('batch {} x_shape: {} y_shape: {}'.format(i, x.shape, y.shape))
 
     LOGGER.info('Dataset has {} instances'.format(len(dataset)))
     LOGGER.info('Inputs: {}'.format(', '.join(in_names)))

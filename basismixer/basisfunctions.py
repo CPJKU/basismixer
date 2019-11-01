@@ -10,7 +10,10 @@ import partitura.score as score
 
 LOGGER = logging.getLogger(__name__)
 
-class InvalidBasisException(Exception): pass
+
+class InvalidBasisException(Exception):
+    pass
+
 
 def list_basis_functions():
     module = sys.modules[__name__]
@@ -20,9 +23,9 @@ def list_basis_functions():
         if isinstance(member, types.FunctionType) and name.endswith('_basis'):
             print('* {}'.format(name))
             if member.__doc__:
-                print(' '*doc_indent + member.__doc__.replace('\n', ' '*doc_indent+'\n'))
+                print(' ' * doc_indent + member.__doc__.replace('\n', ' ' * doc_indent + '\n'))
 
-    
+
 def make_basis(part, basis_functions):
     acc = []
 
@@ -35,7 +38,7 @@ def make_basis(part, basis_functions):
             func = bf
         else:
             LOGGER.warning('Ignoring unknown basis function {}'.format(bf))
-            
+
         bf, bn = func(part)
 
         # check if the size and number of the basis function are correct
@@ -72,12 +75,12 @@ def odd_even_basis(part):
 
 def polynomial_pitch_basis(part):
     """Polynomial pitch basis.
-    
+
     Parameters
     ----------
     part: type
         Description of `part`
-    
+
     Returns
     -------
     type
@@ -97,18 +100,17 @@ def polynomial_pitch_basis(part):
 
 def duration_basis(part):
     """Duration basis.
-    
+
     Parameters
     ----------
     part: type
         Description of `part`
-    
+
     Returns
     -------
     type
         Description of return value
     """
-    
 
     basis_names = ['duration']
 
@@ -145,7 +147,7 @@ def loudness_direction_basis(part):
         bf += basis_function_activation(d)(onsets)
 
     W = np.empty((len(onsets), len(basis_by_name)))
-    names = [None]*len(basis_by_name)
+    names = [None] * len(basis_by_name)
     for name, (j, bf) in basis_by_name.items():
         W[:, j] = bf
         names[j] = name
@@ -181,7 +183,7 @@ def tempo_direction_basis(part):
         bf += basis_function_activation(d)(onsets)
 
     W = np.empty((len(onsets), len(basis_by_name)))
-    names = [None]*len(basis_by_name)
+    names = [None] * len(basis_by_name)
     for name, (j, bf) in basis_by_name.items():
         W[:, j] = bf
         names[j] = name
@@ -268,7 +270,7 @@ def articulation_basis(part):
 
     M = len(basis_by_name)
     W = np.empty((N, M))
-    names = [None]*M
+    names = [None] * M
 
     for name, (j, bf) in basis_by_name.items():
         W[:, j] = bf
@@ -283,7 +285,7 @@ def staccato_basis(part):
     W, names = articulation_basis(part)
     if 'staccato' in names:
         i = names.index('staccato')
-        return W[:, i:i+1], ['staccato']
+        return W[:, i:i + 1], ['staccato']
     else:
         return np.empty(len(W)), []
 
@@ -326,7 +328,7 @@ def metrical_basis(part):
         bf[i] = 1
 
     W = np.empty((len(notes), len(basis_by_name)))
-    names = [None]*len(basis_by_name)
+    names = [None] * len(basis_by_name)
     for name, (j, bf) in basis_by_name.items():
         W[:, j] = bf
         names[j] = name
@@ -358,31 +360,31 @@ def normalize(data, method='minmax'):
 
       That is, the normalized data will equal one wherever the original data
       equals one. The target interval is `(-1/np.tanh(1), 1/np.tanh(1))`.
-    
+
     Parameters
     ----------
     data: ndarray
         Data to be normalized
     method: {'minmax', 'tanh', 'tanh_unity'}, optional
         The normalization method. Defaults to 'minmax'.
-    
+
     Returns
     -------
     ndarray
         Normalized copy of the data
     """
-    
+
     """Normalize the data in `data`. There are several normalization
     
     """
     if method == 'minmax':
         vmin = np.min(data, 0)
         vmax = np.max(data, 0)
-        return (data-vmin)/(vmax-vmin)
+        return (data - vmin) / (vmax - vmin)
     elif method == 'tanh':
         return np.tanh(data)
     elif method == 'tanh_unity':
-        return np.tanh(data)/np.tanh(1)
+        return np.tanh(data) / np.tanh(1)
 
 
 # from extra.utils.data_utils import smooth
@@ -1073,5 +1075,3 @@ def normalize(data, method='minmax'):
 #             LOGGER.warning('Cannot create HarmonicTensionBasis, because no derived data folder has been specified')
 
 #         return FeatureBasis(soft_normalize(W), cls.make_full_names())
-
-
