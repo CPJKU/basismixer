@@ -55,9 +55,11 @@ def main():
     basis_functions = ['polynomial_pitch_basis',
                        'loudness_direction_basis',
                        'tempo_direction_basis',
+                       'articulation_direction_basis',
                        'articulation_basis',
                        'duration_basis',
                        'fermata_basis',
+                       'slur_basis',
                        'metrical_basis'
                        ]
     dyn_codec = OnsetwiseDecompositionDynamicsCodec()
