@@ -3,6 +3,7 @@
 """
 Performance Codec
 """
+import itertools
 import os
 import sys
 import numpy as np
@@ -510,7 +511,7 @@ class TimeCodec(object):
 
         tempo_param_name = self.normalization['param_names'][0]
 
-        self.parameter_names = ((tempo_param_name, 'timing', 'log_articulation') +
+        self.parameter_names = ((tempo_param_name, 'timing', 'articulation_log') +
                                 self.normalization['param_names'][1:])
 
         self.tempo_fun = tempo_fun
@@ -560,7 +561,7 @@ class TimeCodec(object):
         # Initialize array of parameters
         parameters = np.zeros(len(score),
                               dtype=[(pn, 'f4') for pn in self.parameter_names])
-        parameters['log_articulation'] = articulation_param
+        parameters['articulation_log'] = articulation_param
         for i, jj in enumerate(unique_onset_idxs):
             parameters[self.normalization['param_names'][0]][jj] = tempo_params[0][i]
             # Defined as in Eq. (3.9) in Thesis (pp. 34)
@@ -612,7 +613,7 @@ class TimeCodec(object):
             # decode duration
             performance[jj, 1] = decode_articulation(
                 score_durations=score_durations[jj],
-                articulation_parameter=parameters['log_articulation'][jj],
+                articulation_parameter=parameters['articulation_log'][jj],
                 beat_period=beat_period[i])
 
         performance[:, 0] -= np.min(performance[:, 0])
@@ -806,3 +807,40 @@ def to_matched_score(part, ppart, alignment):
               ('p_onset', 'f4'), ('p_duration', 'f4'), ('velocity', 'i4')]
 
     return np.array(ms, dtype=fields), snote_ids
+
+VALID_DYNAMICS_PARAMS = [('velocity', ),
+                         ('velocity_trend', 'velocity_dev')]
+
+VALID_TEMPO_PARAMS  = [('beat_period', 'timing', 'articulation_log'),
+                       ('beat_period_log', 'timing', 'articulation_log'),
+                       ('beat_period_ratio', 'beat_period_mean', 'timing', 'articulation_log'),
+                       ('beat_period_ratio_log', 'beat_period_mean', 'timing', 'articulation_log'),
+                       ('beat_period_standardized', 'beat_period_mean', 'beat_period_std', 'timing', 'articulation_log')]
+
+VALID_PARAMETER_COMBINATIONS = [set(c[0] + c[1]) for c in itertools.product(VALID_TEMPO_PARAMS, VALID_DYNAMICS_PARAMS)]
+
+def get_performance_codec(parameter_names):
+
+    if set(parameter_names) not in VALID_PARAMETER_COMBINATIONS:
+        raise ValueError('Invalid combination of parameters')
+    
+    if 'velocity' in parameter_names:
+        dynamics_codec = NotewiseDynamicsCodec()
+    elif 'velocity_trend' in parameter_names:
+            dynamics_codec = OnsetwiseDecompositionDynamicsCodec()
+
+    if 'beat_period' in parameter_names:
+        normalization = 'beat_period'
+    elif 'beat_period_log' in parameter_names:
+        normalization = 'beat_period_log'
+    elif 'beat_period_ratio' in parameter_names:
+        normalization = 'beat_period_ratio'
+    elif 'beat_period_ratio_log' in parameter_names:
+        normalization = 'beat_period_ratio_log'
+    elif 'beat_period_standardized' in parameter_names:
+        normalization = 'beat_period_standardized'
+
+    time_codec = TimeCodec(normalization=normalization)
+
+
+    return PerformanceCodec(time_codec, dynamics_codec)
