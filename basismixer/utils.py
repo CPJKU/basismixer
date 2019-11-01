@@ -63,6 +63,7 @@ def pair_files(folder_dict, full_path=True,
     if valid_pieces is None:
         vpieces = []
     else:
+        print('using list of valid pieces')
         vpieces = valid_pieces
     for label, directory in folder_dict.items():
         for f in os.listdir(directory):

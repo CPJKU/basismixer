@@ -51,7 +51,7 @@ def make_dataset(mxml_folder, match_folder, basis_functions, perf_codec, seq_len
     data = []
 
     folders = dict(mxml=mxml_folder, match=match_folder)
-    for files in pair_files(folders).values():
+    for files in pair_files(folders, valid_pieces=valid_pieces).values():
         # files is a dictionary with keys 'mxml', and 'match'. The
         # corresponding values are sets of filenames. In our case there
         # will be a single musicxml file and multiple match files.

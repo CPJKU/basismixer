@@ -32,8 +32,8 @@ class PerformanceCodec(object):
 
         self.dynamics_codec = dynamics_codec
 
-        self.parameter_names = (self.dynamics_codec.parameter_names +
-                                self.time_codec.parameter_names)
+        self.parameter_names = (self.dynamics_codec.parameter_names
+                                + self.time_codec.parameter_names)
         self.default_values = default_values
 
     def encode(self, part, ppart, alignment, return_u_onset_idx=False):
@@ -386,8 +386,8 @@ def beat_period_standardized_scale(beat_period):
 
 
 def beat_period_standardized_rescale(tempo_params):
-    return (tempo_params['beat_period_standardized'] * tempo_params['beat_period_std'] +
-            tempo_params['beat_period_mean'])
+    return (tempo_params['beat_period_standardized'] * tempo_params['beat_period_std']
+            + tempo_params['beat_period_mean'])
 
 
 def beat_period_ratio_scale(beat_period):
@@ -510,8 +510,8 @@ class TimeCodec(object):
 
         tempo_param_name = self.normalization['param_names'][0]
 
-        self.parameter_names = ((tempo_param_name, 'timing', 'log_articulation')
-                                + self.normalization['param_names'][1:])
+        self.parameter_names = ((tempo_param_name, 'timing', 'log_articulation') +
+                                self.normalization['param_names'][1:])
 
         self.tempo_fun = tempo_fun
 
@@ -544,8 +544,8 @@ class TimeCodec(object):
             return_onset_idxs=True)
 
         # Compute equivalent onsets
-        eq_onsets = (np.cumsum(np.r_[0, beat_period[:-1] * np.diff(s_onsets)])
-                     + performance[unique_onset_idxs[0], 0].mean())
+        eq_onsets = (np.cumsum(np.r_[0, beat_period[:-1] * np.diff(s_onsets)]) +
+                     performance[unique_onset_idxs[0], 0].mean())
 
         # Compute tempo parameter
         tempo_params = self.normalization['scale'](beat_period)
@@ -772,13 +772,20 @@ def _monotonize_times(s, mask, strict, deltas=None):
 
 
 def to_matched_score(part, ppart, alignment):
+    # remove repetitions from aligment note ids
+    for a in alignment:
+        if a['label'] == 'match':
+            a['score_id'] = str(a['score_id']).split('-')[0]
+
     part_by_id = dict((n.id, n) for n in part.notes_tied)
     ppart_by_id = dict((n['id'], n) for n in ppart.notes)
 
     # pair matched score and performance notes
+
     note_pairs = [(part_by_id[a['score_id']],
                    ppart_by_id[a['performance_id']])
-                  for a in alignment if a['label'] == 'match']
+                  for a in alignment if (a['label'] == 'match' and
+                                         a['score_id'] in part_by_id)]
 
     ms = []
     # sort according to onset (primary) and pitch (secondary)

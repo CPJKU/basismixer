@@ -25,120 +25,134 @@ from basismixer.utils import load_pyc_bz, save_pyc_bz
 
 LOGGER = logging.getLogger(__name__)
 
+CONFIG = [
+    dict(basis_functions=['polynomial_pitch_basis',
+                          'loudness_direction_basis',
+                          'tempo_direction_basis',
+                          'articulation_basis',
+                          'duration_basis',
+                          'fermata_basis',
+                          'metrical_basis'],
+         parameter_names=['velocity_trend', 'timing', 'log_articulation'],
+         constructor=['basismixer.predictive_models', 'FeedForwardModel'],
+         args=dict(
+             hidden_size=128,
+             input_type='notewise'
+    ),
+        train_args=dict(
+            optimizer=dict(constructor='Adam',
+                           lr=1e-4),
+            epochs=3,
+            save_freq=1,
+            early_stopping=100
+    )
+    ),
+    dict(basis_functions=['polynomial_pitch_basis',
+                          'loudness_direction_basis',
+                          'tempo_direction_basis',
+                          'articulation_basis',
+                          'duration_basis',
+                          'fermata_basis',
+                          'metrical_basis'],
+         parameter_names=['velocity_trend', 'beat_period_standardized'],
+         constructor=['basismixer.predictive_models', 'RecurrentModel'],
+         args=dict(
+             recurrent_size=128,
+             n_layers=1,
+             hidden_size=64,
+             input_type='onsetwise'),
+         train_args=dict(
+        optimizer=dict(constructor='Adam',
+                       lr=1e-4),
+        epochs=3,
+        save_freq=1,
+        early_stopping=100
+    )
+    )
+]
 
-def main():
+
+# def main():
+if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description="Train a Model given a dataset")
-    paraser.add_argument("dataset", help="Dataset")
+    parser.add_argument("dataset", help="Dataset")
     parser.add_argument("--model-config", help="Model Configuration",
-                        default=MODEL_CONFIG_EXAMPLE)
-    parser.add_argument("--params", help="Parameters of the model",
-                        default=None)
-    parser.add_argument("--targets",
-                        help="Indices of the targets in the dataset",
-                        nargs='+', type=int,
-                        default=None)
-    parser.add_argument("xmlfolder", help="Folder with MusicXML files")
-    parser.add_argument("matchfolder", help="Folder with match files")
+                        default=CONFIG)
+    parser.add_argument("--out-dir", help="Output Directory",
+                        default='/tmp')
     args = parser.parse_args()
 
     # Load model architecture
-    model_config = json.load(open(args.model_config))
+    if not isinstance(args.model_config, list):
+        model_config = json.load(open(args.model_config))
+    else:
+        model_config = args.model_config
 
-    # Load model parameters if needed
-    params = None
-    if args.params is not None:
-        params = torch.load(args.params)
+    if not os.path.exists(args.out_dir):
+        os.mkdir(args.out_dir)
 
-    # load model
-    model = construct_model(model_config, params)
+    json.dump(model_config, open(os.path.join(args.out_dir, 'model_config.json'), 'w'),
+              indent=4)
 
     # load dataset
-    data = load_pyc_bz(dataset_fn)
+    batch_size = 10
+    data = load_pyc_bz(args.dataset)
     dataset = data['dataset']
     in_names = data['in_names']
     out_names = data['out_names']
-
-    # select expressive parameters
-    if args.targets is not None:
-        targets_idxs = np.array(args.targets)
-        for d in dataset.datasets:
-            d.targets_idx = targets_idxs
-
-
-if __name__ == '__main__':
-
-    parser = argparse.ArgumentParser(
-        description="Train a Model")
-    parser.add_argument("xmlfolder", help="Folder with MusicXML files")
-    parser.add_argument("matchfolder", help="Folder with match files")
-    args = parser.parse_args()
-    # basis_config = json.load(open(args.basisconfig))
-    basis_functions = ['polynomial_pitch_basis',
-                       'loudness_direction_basis',
-                       'tempo_direction_basis',
-                       'articulation_basis',
-                       'duration_basis'
-                       ]
-    dyn_codec = OnsetwiseDecompositionDynamicsCodec()
-    time_codec = TimeCodec(normalization='bp_standardized')
-    perf_codec = PerformanceCodec(time_codec, dyn_codec)
-
-    seq_len = 20
-    batch_size = 10
-    dataset_fn = '/tmp/dataset_notewise.pyc.bz'
-    if not os.path.exists(dataset_fn):
-        dataset, in_names, out_names = make_dataset(args.xmlfolder, args.matchfolder,
-                                                    basis_functions, perf_codec, seq_len,
-                                                    aggregate_onsetwise=False)
-        data = dict(
-            dataset=dataset,
-            in_names=in_names,
-            out_names=out_names)
-        save_pyc_bz(data, dataset_fn)
-    else:
-        data = load_pyc_bz(dataset_fn)
-        dataset = data['dataset']
-        in_names = data['in_names']
-        out_names = data['out_names']
-
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-    LOGGER.info('Dataset has {} instances'.format(len(dataset)))
-    LOGGER.info('Inputs: {}'.format(', '.join(in_names)))
-    LOGGER.info('Outputs: {}'.format(', '.join(out_names)))
+    models = []
+    target_idxs = []
+    input_idxs = []
+    for config in model_config:
+        model_in_names = []
+        for bf in config['basis_functions']:
+            for name in in_names:
+                if name.startswith(bf):
+                    model_in_names.append(name)
 
-    device = torch.device('cpu')
-    recurrent_size = 10
-    hidden_size = 7
-    n_layers = 1
-    model = RecurrentModel(input_size=len(in_names),
-                           output_size=len(out_names),
-                           recurrent_size=recurrent_size,
-                           hidden_size=hidden_size,
-                           n_layers=n_layers,
-                           input_names=in_names,
-                           output_names=out_names,
-                           input_type='onsetwise')
+        i_idxs = np.array([list(in_names).index(bf) for bf in model_in_names])
+        input_idxs.append(i_idxs)
 
-    params_fn = '/tmp/best_model.pth'
+        model_out_names = []
+        for pn in config['parameter_names']:
+            for name in out_names:
+                if name == pn:
+                    model_out_names.append(name)
 
-    if not os.path.exists(params_fn):
+        t_idxs = np.array([list(out_names).index(pn) for pn in model_out_names])
+        target_idxs.append(t_idxs)
 
+        config['args']['input_names'] = model_in_names
+        config['args']['input_size'] = len(model_in_names)
+
+        config['args']['output_names'] = model_out_names
+        config['args']['output_size'] = len(model_out_names)
+
+        models.append(construct_model(config))
+
+    for model, config, t_idxs in zip(models, model_config, target_idxs):
+
+        for d in dataset.datasets:
+            d.targets_idx = t_idxs
+
+        t_config = config['train_args']
+        o_config = t_config.pop('optimizer')
+        model_name = '-'.join(model.output_names) + '-' + model.input_type
+        model_out_dir = os.path.join(args.out_dir, model_name)
+        if not os.path.exists(model_out_dir):
+            os.mkdir(model_out_dir)
         loss = MSELoss()
-        optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+        optim = getattr(torch.optim, o_config.pop('constructor'))
+        optimizer = optim(model.parameters(), **o_config)
         trainer = SupervisedTrainer(model=model,
                                     train_loss=loss,
                                     optimizer=optimizer,
                                     valid_loss=loss,
                                     train_dataloader=dataloader,
                                     valid_dataloader=dataloader,
-                                    epochs=3,
-                                    save_freq=1,
-                                    out_dir='/tmp')
-
+                                    out_dir=model_out_dir,
+                                    **t_config)
         trainer.train()
-
-    else:
-        model_params = torch.load(params_fn)
-        model.load_state_dict(model_params['state_dict'])

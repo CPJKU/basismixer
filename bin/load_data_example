@@ -46,13 +46,17 @@ def main():
     #                           "a default configuration will be used."),
     #                     default=BASIS_CONFIG_EXAMPLE)
     args = parser.parse_args()
+
+    valid_pieces = None
+    if args.valid_pieces is not None:
+        valid_pieces = np.loadtxt(args.valid_pieces, dtype=str)
+
     # basis_config = json.load(open(args.basisconfig))
     basis_functions = ['polynomial_pitch_basis',
                        'loudness_direction_basis',
                        'tempo_direction_basis',
                        'articulation_basis',
                        'duration_basis',
-                       # 'slur_basis',
                        'fermata_basis',
                        'metrical_basis'
                        ]
@@ -65,7 +69,8 @@ def main():
 
     dataset, in_names, out_names = make_dataset(args.xmlfolder, args.matchfolder,
                                                 basis_functions, perf_codec, seq_len,
-                                                aggregate_onsetwise=args.onsetwise)
+                                                aggregate_onsetwise=args.onsetwise,
+                                                valid_pieces=valid_pieces)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     if args.targets is not None:

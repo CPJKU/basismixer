@@ -209,20 +209,36 @@ def basis_function_activation(direction):
             sustained_end = next_dir.start.t
         else:
             # no sustained activation
-            sustained_end = direction.end.t
+            try:
+                sustained_end = direction.end.t
+            except:
+                if score.Measure in direction.start.starting_objects:
+                    sustained_end = direction.start.starting_objects[score.Measure][0].end.t
+                else:
+                    # Give fake end to direction of start plus one quarter
+                    sustained_end = direction.start.t + direction.start.quarter
 
+        if direction.end is not None:
+            direction_end = direction.end.t
+        else:
+            direction_end = direction.start.t + direction.start.quarter
         x = [direction.start.t,
-             direction.end.t - epsilon,
+             direction_end - epsilon,
              sustained_end - epsilon]
         y = [0, 1, 1]
 
     elif isinstance(direction, (score.ConstantLoudnessDirection,
                                 score.ConstantArticulationDirection,
                                 score.ConstantTempoDirection)):
+        if direction.end is not None:
+            direction_end = direction.end.t
+        else:
+            direction_end = direction.start.t + direction.start.quarter
+
         x = [direction.start.t - epsilon,
              direction.start.t,
-             direction.end.t - epsilon,
-             direction.end.t]
+             direction_end - epsilon,
+             direction_end]
         y = [0, 1, 1, 0]
 
     else:  # impulsive
