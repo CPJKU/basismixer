@@ -6,16 +6,18 @@ channels:
 
 dependencies:
   - python=3
+  - cpuonly
+  - pytorch-cpu
   - numpy
   - scipy
   - matplotlib
   - ipython
   - jupyter
-  - pytorch
-  - sphinx
   - pip
   - tqdm
 
   - pip:
+    - appdirs
+    - soundfile
     - partitura
-    
+    - git+https://github.com/OFAI/basismixer.git@develop
