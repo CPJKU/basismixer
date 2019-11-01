@@ -121,7 +121,7 @@ if __name__ == '__main__':
     for fn, config in zip(args.dataset, model_config):
 
         #### Construct Dataset ####
-        batch_size = config['train_args']['batch_size']
+        batch_size = config['train_args'].pop('batch_size')
         # load dataset
         data = load_pyc_bz(fn)
         dataset = data['dataset']
