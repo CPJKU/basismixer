@@ -71,7 +71,6 @@ def main():
                                                 basis_functions, perf_codec, seq_len,
                                                 aggregate_onsetwise=args.onsetwise,
                                                 valid_pieces=valid_pieces)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     if args.targets is not None:
         targets_idxs = np.array(args.targets)
@@ -85,7 +84,7 @@ def main():
                          out_names=out_names),
                     args.save_data)
     else:
-
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
         for i, (x, y) in enumerate(dataloader):
             LOGGER.info('batch {} x_shape: {} y_shape: {}'.format(i, x.shape, y.shape))
 
