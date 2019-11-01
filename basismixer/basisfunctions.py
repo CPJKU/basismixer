@@ -63,16 +63,6 @@ def make_basis(part, basis_functions):
     return basis_data, basis_names
 
 
-def odd_even_basis(part):
-    N = len(part.notes_tied)
-    W = np.ones(N)
-    if N % 2 == 0:
-        basis_names = ['even']
-    else:
-        basis_names = ['odd']
-    return W, basis_names
-
-
 def polynomial_pitch_basis(part):
     """Polynomial pitch basis.
 
@@ -191,37 +181,73 @@ def tempo_direction_basis(part):
     return normalize(W, 'tanh_unity'), names
 
 
+def articulation_direction_basis(part):
+    onsets = np.array([n.start.t for n in part.notes_tied])
+    N = len(onsets)
+
+    directions = list(part.iter_all(
+        score.ArticulationDirection, include_subclasses=True))
+
+    def to_name(d):
+        return d.text
+
+    basis_by_name = {}
+    for d in directions:
+        print(d, d.start.t, d.end.t)
+        j, bf = basis_by_name.setdefault(to_name(d),
+                                         (len(basis_by_name), np.zeros(N)))
+        bf += basis_function_activation(d)(onsets)
+
+    W = np.empty((len(onsets), len(basis_by_name)))
+    names = [None] * len(basis_by_name)
+    for name, (j, bf) in basis_by_name.items():
+        W[:, j] = bf
+        names[j] = name
+
+    return normalize(W, 'tanh_unity'), names
+
+
 def basis_function_activation(direction):
     epsilon = 1e-6
 
     if isinstance(direction, (score.DynamicLoudnessDirection,
                               score.DynamicTempoDirection)):
+        # a dynamic direction will be encoded as a ramp from d.start.t to
+        # d.end.t, and then a step from d.end.t to the start of the next
+        # constant direction.
+
+        # There are two potential issues:
+
+        # Issue 1. d.end is None (e.g. just a ritardando without dashes). In this case
+        if direction.end:
+            direction_end = direction.end.t
+        else:
+            # assume the end of d is the end of the measure:
+            measure = next(direction.start.iter_prev(score.Measure, eq=True), None)
+            if measure:
+                direction_end = measure.start.t
+            else:
+                # no measure, unlikely, but not impossible.
+                direction_end = direction.start.t
 
         if isinstance(direction, score.TempoDirection):
             next_dir = next(direction.start.iter_next(
                 score.ConstantTempoDirection), None)
+        if isinstance(direction, score.ArticulationDirection):
+            next_dir = next(direction.start.iter_next(
+                score.ConstantArticulationDirection), None)
         else:
             next_dir = next(direction.start.iter_next(
                 score.ConstantLoudnessDirection), None)
 
         if next_dir:
-            # TODO: when next_dir is too far away
+            # TODO: what do we do when next_dir is too far away?
             sustained_end = next_dir.start.t
         else:
-            # no sustained activation
-            try:
-                sustained_end = direction.end.t
-            except:
-                if score.Measure in direction.start.starting_objects:
-                    sustained_end = direction.start.starting_objects[score.Measure][0].end.t
-                else:
-                    # Give fake end to direction of start plus one quarter
-                    sustained_end = direction.start.t + direction.start.quarter
+            # Issue 2. there is no next constant direction. In that case the
+            # basis function will be a ramp with a quarter note ramp
+            sustained_end = direction_end + direction.start.quarter
 
-        if direction.end is not None:
-            direction_end = direction.end.t
-        else:
-            direction_end = direction.start.t + direction.start.quarter
         x = [direction.start.t,
              direction_end - epsilon,
              sustained_end - epsilon]
@@ -230,15 +256,10 @@ def basis_function_activation(direction):
     elif isinstance(direction, (score.ConstantLoudnessDirection,
                                 score.ConstantArticulationDirection,
                                 score.ConstantTempoDirection)):
-        if direction.end is not None:
-            direction_end = direction.end.t
-        else:
-            direction_end = direction.start.t + direction.start.quarter
-
         x = [direction.start.t - epsilon,
              direction.start.t,
-             direction_end - epsilon,
-             direction_end]
+             direction.end.t - epsilon,
+             direction.end.t]
         y = [0, 1, 1, 0]
 
     else:  # impulsive
