@@ -817,12 +817,20 @@ VALID_TEMPO_PARAMS  = [('beat_period', 'timing', 'articulation_log'),
                        ('beat_period_ratio_log', 'beat_period_mean', 'timing', 'articulation_log'),
                        ('beat_period_standardized', 'beat_period_mean', 'beat_period_std', 'timing', 'articulation_log')]
 
+INCOMPLETE_TEMPO_PARAMS = [('beat_period', ),
+                       ('beat_period_log', ),
+                       ('beat_period_ratio', 'beat_period_mean', ),
+                       ('beat_period_ratio_log', 'beat_period_mean', ),
+                       ('beat_period_standardized', 'beat_period_mean', 'beat_period_std', )]
+
 VALID_PARAMETER_COMBINATIONS = [set(c[0] + c[1]) for c in itertools.product(VALID_TEMPO_PARAMS, VALID_DYNAMICS_PARAMS)]
+INCOMPLETE_PARAMETER_COMBINATIONS = [set(c[0] + c[1]) for c in itertools.product(INCOMPLETE_TEMPO_PARAMS, VALID_DYNAMICS_PARAMS)]
 
 def get_performance_codec(parameter_names):
 
     if set(parameter_names) not in VALID_PARAMETER_COMBINATIONS:
-        raise ValueError('Invalid combination of parameters')
+        if set(parameter_names) not in INCOMPLETE_PARAMETER_COMBINATIONS:
+            raise ValueError('Invalid combination of parameters')
     
     if 'velocity' in parameter_names:
         dynamics_codec = NotewiseDynamicsCodec()
