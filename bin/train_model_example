@@ -79,6 +79,8 @@ if __name__ == '__main__':
         description="Train a Model given a dataset")
     parser.add_argument("xmlfolder", help="Folder with MusicXML files")
     parser.add_argument("matchfolder", help="Folder with match files")
+    parser.add_argument("--pieces", help="Text file with valid pieces",
+                        default=None)
     # parser.add_argument("dataset", help="Dataset(s) for training the model",
     #                     nargs='+')
     parser.add_argument("--model-config", help="Model configuration",
@@ -99,6 +101,10 @@ if __name__ == '__main__':
     json.dump(model_config, open(os.path.join(args.out_dir, 'model_config.json'), 'w'),
               indent=2)
 
+    if args.pieces is not None:
+        print('valid_pieces')
+        args.pieces = np.loadtxt(args.pieces, dtype=str)
+
     rng = np.random.RandomState(1984)
 
     datasets = []
@@ -107,7 +113,7 @@ if __name__ == '__main__':
     input_idxs = []
     valid_size = 0.20
 
-    datasets = make_datasets(model_config, args.xmlfolder, args.matchfolder)
+    datasets = make_datasets(model_config, args.xmlfolder, args.matchfolder, pieces=args.pieces)
     
     for (dataset, in_names, out_names), config in zip(datasets, model_config):
 
