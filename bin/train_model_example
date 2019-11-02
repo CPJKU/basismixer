@@ -193,4 +193,11 @@ if __name__ == '__main__':
                                     valid_dataloader=valid_loader,
                                     out_dir=model_out_dir,
                                     **config['train_args'])
+        trainer.compute_data_stats()
+
+        # torch.save(model.state_dict(), '/tmp/m.pkl')
+        # params = torch.load('/tmp/m.pkl')
+        # model = construct_model(config['model'], params)
+
         trainer.train()
+

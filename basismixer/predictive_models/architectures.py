@@ -2,7 +2,7 @@ import numpy
 import torch
 from torch import nn
 
-from basismixer.predictive_models.base import NNModel
+from basismixer.predictive_models.base import NNModel, standardize
 
 
 class FeedForwardModel(NNModel):
@@ -63,6 +63,7 @@ class FeedForwardModel(NNModel):
         self.output = nn.Linear(in_features=self.hidden_size[-1],
                                 out_features=self.output_size)
 
+    @standardize
     def forward(self, x):
         h = self.hidden_layers(x)
         output = self.output(h)
