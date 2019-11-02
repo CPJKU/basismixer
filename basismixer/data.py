@@ -111,13 +111,9 @@ def make_datasets(model_specs, mxml_folder, match_folder, pieces=None):
             # load the performed part and the alignment from the match file
             ppart, alignment = load_match(match, first_note_at_zero=True)
 
-            # For Magaloff dataset (remove repetititions)
-            for n in alignment:
-                if n['label'] == 'match':
-                    n['score_id'] = n['score_id'].split('-')[0]
-
             # compute the targets
             targets, snote_ids = perf_codec.encode(part, ppart, alignment)
+    
 
             matched_subset_idxs = np.array([nid_dict[nid] for nid in snote_ids])
             basis_matched = basis[matched_subset_idxs]
