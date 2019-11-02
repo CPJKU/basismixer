@@ -42,7 +42,7 @@ CONFIG = [
                     args=dict(hidden_size=128)),
          train_args=dict(
              optimizer=['Adam', dict(lr=1e-4)],
-             epochs=1000,
+             epochs=3,
              save_freq=10,
              early_stopping=100,
              batch_size=1000,
@@ -57,7 +57,8 @@ CONFIG = [
                           'slur_basis',
                           'fermata_basis',
                           'metrical_basis'],
-         parameter_names=['velocity_trend', 'beat_period_standardized', 'beat_period_mean', 'beat_period_std'],
+         parameter_names=['velocity_trend', 'beat_period_standardized',
+                          'beat_period_mean', 'beat_period_std'],
          seq_len=100,
          model=dict(constructor=['basismixer.predictive_models', 'RecurrentModel'],
                     args=dict(recurrent_size=128,
@@ -65,7 +66,7 @@ CONFIG = [
                               hidden_size=64)),
          train_args=dict(
              optimizer=['Adam', dict(lr=1e-4)],
-             epochs=1000,
+             epochs=3,
              save_freq=5,
              early_stopping=100,
              batch_size=50,
@@ -73,6 +74,16 @@ CONFIG = [
     )
 ]
 
+def jsonize_dict(input_dict):
+    out_dict = dict()
+    for k, v in input_dict.items():
+        if isinstance(v, np.ndarray):
+            out_dict[k] = v.tolist()
+        elif isinstance(v, dict):
+            out_dict[k] = jsonize_dict(v)
+        else:
+            out_dict[k] = v
+    return out_dict
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -81,8 +92,6 @@ if __name__ == '__main__':
     parser.add_argument("matchfolder", help="Folder with match files")
     parser.add_argument("--pieces", help="Text file with valid pieces",
                         default=None)
-    # parser.add_argument("dataset", help="Dataset(s) for training the model",
-    #                     nargs='+')
     parser.add_argument("--model-config", help="Model configuration",
                         default=CONFIG)
     parser.add_argument("--out-dir", help="Output directory",
@@ -98,7 +107,8 @@ if __name__ == '__main__':
     if not os.path.exists(args.out_dir):
         os.mkdir(args.out_dir)
 
-    json.dump(model_config, open(os.path.join(args.out_dir, 'model_config.json'), 'w'),
+    json.dump(model_config,
+              open(os.path.join(args.out_dir, 'model_config.json'), 'w'),
               indent=2)
 
     if args.pieces is not None:
@@ -113,8 +123,11 @@ if __name__ == '__main__':
     input_idxs = []
     valid_size = 0.20
 
-    datasets = make_datasets(model_config, args.xmlfolder, args.matchfolder, pieces=args.pieces)
-    
+    datasets = make_datasets(model_config,
+                             args.xmlfolder,
+                             args.matchfolder,
+                             pieces=args.pieces)
+
     for (dataset, in_names, out_names), config in zip(datasets, model_config):
 
         batch_size = config['train_args'].pop('batch_size')
@@ -136,19 +149,22 @@ if __name__ == '__main__':
                                   sampler=valid_sampler)
 
         #### Construct Models ####
+
         model_cfg = config['model'].copy()
         model_cfg['args']['input_names'] = in_names
         model_cfg['args']['input_size'] = len(in_names)
         model_cfg['args']['output_names'] = out_names
         model_cfg['args']['output_size'] = len(out_names)
-        model = construct_model(model_cfg)
-
-        model_name = ('-'.join(model.output_names) +
-                      '-' + 'onsetwise' if config['onsetwise'] else 'notewise')
+        model_name = ('-'.join(out_names) +
+                      '-' + ('onsetwise' if config['onsetwise'] else 'notewise'))
         model_out_dir = os.path.join(args.out_dir, model_name)
-
         if not os.path.exists(model_out_dir):
             os.mkdir(model_out_dir)
+        # save model config for later saving model
+        json.dump(jsonize_dict(model_cfg),
+                  open(os.path.join(model_out_dir, 'config.json'), 'w'),
+                  indent=2)
+        model = construct_model(model_cfg)
 
         loss = MSELoss()
 
