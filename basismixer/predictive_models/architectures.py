@@ -119,6 +119,7 @@ class RecurrentModel(NNModel):
             n_layers = self.n_layers
         return torch.zeros(n_layers, batch_size, self.recurrent_size)
 
+    @standardize
     def forward(self, x):
         batch_size = x.size(0)
         seq_len = x.size(1)
