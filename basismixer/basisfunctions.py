@@ -287,7 +287,8 @@ def slur_basis(part):
     W = np.zeros((len(onsets), 2))
 
     for slur in slurs:
-
+        if not slur.end:
+            continue
         x = [slur.start.t, slur.end.t]
         y_inc = [0, 1]
         y_dec = [1, 0]
