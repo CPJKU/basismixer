@@ -36,16 +36,16 @@ CONFIG = [
                           'slur_basis',
                           'fermata_basis',
                           'metrical_basis'],
-         parameter_names=['velocity_trend', 'timing', 'articulation_log'],
+         parameter_names=['velocity_dev', 'timing', 'articulation_log'],
          seq_len=1,
          model=dict(constructor=['basismixer.predictive_models', 'FeedForwardModel'],
                     args=dict(hidden_size=128)),
          train_args=dict(
              optimizer=['Adam', dict(lr=1e-4)],
-             epochs=3,
-             save_freq=1,
+             epochs=1000,
+             save_freq=10,
              early_stopping=100,
-             batch_size=10,
+             batch_size=1000,
          )
     ),
     dict(onsetwise=True,
@@ -58,17 +58,17 @@ CONFIG = [
                           'fermata_basis',
                           'metrical_basis'],
          parameter_names=['velocity_trend', 'beat_period_standardized', 'beat_period_mean', 'beat_period_std'],
-         seq_len=10,
+         seq_len=100,
          model=dict(constructor=['basismixer.predictive_models', 'RecurrentModel'],
                     args=dict(recurrent_size=128,
                               n_layers=1,
                               hidden_size=64)),
          train_args=dict(
              optimizer=['Adam', dict(lr=1e-4)],
-             epochs=3,
-             save_freq=1,
+             epochs=1000,
+             save_freq=5,
              early_stopping=100,
-             batch_size=10,
+             batch_size=50,
          )
     )
 ]
@@ -124,7 +124,6 @@ if __name__ == '__main__':
         valid_sampler = SubsetRandomSampler(valid_idx)
         train_loader = DataLoader(dataset,
                                   batch_size=batch_size,
-                                  # shuffle=True,
                                   sampler=train_sampler)
         valid_loader = DataLoader(dataset,
                                   batch_size=batch_size,
@@ -154,7 +153,6 @@ if __name__ == '__main__':
 
         trainer = SupervisedTrainer(model=model,
                                     train_loss=loss,
-                                    # optimizer=optimizer,
                                     valid_loss=loss,
                                     train_dataloader=train_loader,
                                     valid_dataloader=valid_loader,
