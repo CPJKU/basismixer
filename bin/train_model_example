@@ -90,6 +90,12 @@ if __name__ == '__main__':
         description="Train a Model given a dataset")
     parser.add_argument("xmlfolder", help="Folder with MusicXML files")
     parser.add_argument("matchfolder", help="Folder with match files")
+    parser.add_argument("--datasets", help=(
+        'Path to pickled datasets file. If specified and the file exists, '
+        'the `xmlfolder` and `matchfolder` options will be ignored, and it '
+        'will be assumed that datasets in the specified file correspond to '
+        'the model configuration. If specifed and the path does not exist, '
+        'the datasets are computed and saved to the specified path.'))
     parser.add_argument("--pieces", help="Text file with valid pieces",
                         default=None)
     parser.add_argument("--model-config", help="Model configuration",
@@ -123,10 +129,17 @@ if __name__ == '__main__':
     input_idxs = []
     valid_size = 0.20
 
-    datasets = make_datasets(model_config,
-                             args.xmlfolder,
-                             args.matchfolder,
-                             pieces=args.pieces)
+    if args.datasets and os.path.exists(args.datasets):
+        LOGGER.info('Loading data from {}'.format(args.datasets))
+        datasets = load_pyc_bz(args.datasets)
+    else:
+        datasets = make_datasets(model_config,
+                                 args.xmlfolder,
+                                 args.matchfolder,
+                                 pieces=args.pieces)
+        if args.datasets:
+            LOGGER.info('Saving data to {}'.format(args.datasets))
+            save_pyc_bz(datasets, args.datasets)
 
     for (dataset, in_names, out_names), config in zip(datasets, model_config):
 
@@ -180,4 +193,11 @@ if __name__ == '__main__':
                                     valid_dataloader=valid_loader,
                                     out_dir=model_out_dir,
                                     **config['train_args'])
+        trainer.compute_data_stats()
+
+        # torch.save(model.state_dict(), '/tmp/m.pkl')
+        # params = torch.load('/tmp/m.pkl')
+        # model = construct_model(config['model'], params)
+
         trainer.train()
+

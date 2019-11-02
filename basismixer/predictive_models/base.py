@@ -32,6 +32,15 @@ def construct_model(arch_spec, params=None):
     return m
 
 
+def standardize(func):
+    """Standardization decorator for forward method of NNModels.
+
+    """
+    def wrapper(self, x):
+        return func(self, (x - self.in_mean)/self.in_std)*self.out_std + self.out_mean
+
+    return wrapper
+
 class FullPredictiveModel(nn.Module):
     """Meta model for predicting an expressive performance
     """
@@ -202,6 +211,10 @@ class NNModel(nn.Module, PredictiveModel):
         self.dtype = dtype
         self.device = device if device is not None else torch.device('cpu')
         self.to(self.device)
+        self.register_buffer('in_mean', torch.zeros(len(input_names)))
+        self.register_buffer('in_std', torch.ones(len(input_names)))
+        self.register_buffer('out_mean', torch.zeros(len(output_names)))
+        self.register_buffer('out_std', torch.ones(len(output_names)))
 
     @property
     def dtype(self):

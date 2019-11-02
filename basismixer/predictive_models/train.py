@@ -67,6 +67,103 @@ class NNTrainer(ABC):
     def valid_step(self, *args, **kwargs):
         pass
 
+    def compute_data_stats(self):
+        var_type = 'population'
+        # minimum value for standard deviation
+        eps = 0.00001
+
+        in_means = []
+        in_vars = []
+        in_sizes = []
+        out_means = []
+        out_vars = []
+        out_sizes = []
+
+
+        bar = tqdm(enumerate(self.train_dataloader), total=len(self.train_dataloader))
+        bar.set_description("computing stats")
+
+        # for b_idx, (input, target) in enumerate(self.train_dataloader):
+        for b_idx, (input, target) in bar:
+
+            if self.device is not None:
+                input = input.to(self.device).type(self.dtype)
+                target = target.to(self.device).type(self.dtype)
+
+            in_means.append(input.mean((0, 1)).unsqueeze(0))
+            in_vars.append(input.var((0, 1)).unsqueeze(0))
+            in_sizes.append(torch.prod(torch.tensor(input.shape[:-1])))
+            # all_data.append(input)
+            out_means.append(target.mean((0, 1)).unsqueeze(0))
+            out_vars.append(target.var((0, 1)).unsqueeze(0))
+            out_sizes.append(torch.prod(torch.tensor(target.shape[:-1])))
+
+        in_means = torch.cat(in_means, axis=0)
+        in_vars = torch.cat(in_vars, axis=0)
+        in_sizes = torch.tensor(in_sizes)
+
+        out_means = torch.cat(out_means, axis=0)
+        out_vars = torch.cat(out_vars, axis=0)
+        out_sizes = torch.tensor(out_sizes)
+
+        in_N = in_sizes.sum()
+        in_mean = (in_means.T * in_sizes).T.sum(0)/in_N
+
+        out_N = out_sizes.sum()
+        out_mean = (out_means.T * out_sizes).T.sum(0)/out_N
+
+        if var_type == 'population':
+            in_ess = (in_vars.T * (in_sizes-1)).T.sum(0)
+            out_ess = (out_vars.T * (out_sizes-1)).T.sum(0)
+        else:
+            in_ess = (in_vars.T*in_sizes).T.sum(0)
+            out_ess = (out_vars.T*out_sizes).T.sum(0)
+
+        in_tgss = (((in_means-in_mean)**2).T*in_sizes).T.sum(0)
+        out_tgss = (((out_means-out_mean)**2).T*out_sizes).T.sum(0)
+
+        if var_type == 'population':
+            in_var = (in_ess+in_tgss)/(in_N-1)
+            out_var = (out_ess+out_tgss)/(out_N-1)
+        else:
+            in_var = (in_ess+in_tgss)/in_N
+            out_var = (out_ess+out_tgss)/out_N
+
+        in_std = in_var**.5
+        out_std = out_var**.5
+        
+        # avoid zero std dev
+        # std[std==0] = eps
+        in_std[in_std<eps] = eps
+        out_std[out_std<eps] = eps
+        
+        self.model.in_mean = in_mean
+        self.model.in_std = in_std
+        self.model.out_mean = out_mean
+        self.model.out_std = out_std
+
+        # if var_type == 'population':
+        #     in_var = (in_ess+in_tgss)/(in_N-1)
+        #     out_var = (out_ess+out_tgss)/(out_N-1)
+        # else:
+        #     in_var = (in_ess+in_tgss)/in_N
+        #     out_var = (out_ess+out_tgss)/out_N
+
+        # in_std = in_var**.5
+        # out_std = out_var**.5
+        
+        
+        # # avoid zero std dev
+        # # std[std==0] = eps
+        # in_std[in_std<eps] = eps
+        # out_std[out_std<eps] = eps
+        
+        # self.model.in_mean = in_mean
+        # self.model.in_std = in_std
+        # self.model.out_mean = out_mean
+        # self.model.out_std = out_std
+
+
     def train(self):
 
         train_loss_name = getattr(self.train_loss, 'name', 'Train Loss')

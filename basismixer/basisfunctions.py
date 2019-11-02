@@ -91,7 +91,7 @@ def polynomial_pitch_basis(part):
                          pitches**2 / max_pitch**2,
                          pitches**3 / max_pitch**3))
 
-    return normalize(W), basis_names
+    return W, basis_names
 
 
 def duration_basis(part):
@@ -116,7 +116,7 @@ def duration_basis(part):
     durations_beat = bm(nd[:, 1]) - bm(nd[:, 0])
     W = durations_beat
     W.shape = (-1, 1)
-    return normalize(W, 'tanh_unity'), basis_names
+    return W, basis_names
 
 
 def loudness_direction_basis(part):
@@ -148,7 +148,7 @@ def loudness_direction_basis(part):
         W[:, j] = bf
         names[j] = name
 
-    return normalize(W, 'tanh_unity'), names
+    return W, names
 
 
 def tempo_direction_basis(part):
@@ -184,7 +184,7 @@ def tempo_direction_basis(part):
         W[:, j] = bf
         names[j] = name
 
-    return normalize(W, 'tanh_unity'), names
+    return W, names
 
 
 def articulation_direction_basis(part):
@@ -213,7 +213,7 @@ def articulation_direction_basis(part):
         W[:, j] = bf
         names[j] = name
 
-    return normalize(W, 'tanh_unity'), names
+    return W, names
 
 
 def basis_function_activation(direction):
@@ -295,7 +295,7 @@ def slur_basis(part):
         W[:, 0] += interp1d(x, y_inc, bounds_error=False, fill_value=0)(onsets)
         W[:, 1] += interp1d(x, y_dec, bounds_error=False, fill_value=0)(onsets)
 
-    return normalize(W, 'tanh_unity'), names
+    return W, names
 
 
 def articulation_basis(part):
@@ -378,7 +378,7 @@ def metrical_basis(part):
         W[:, j] = bf
         names[j] = name
 
-    return normalize(W, 'tanh_unity'), names
+    return W, names
 
 
 def normalize(data, method='minmax'):
