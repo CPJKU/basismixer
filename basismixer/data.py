@@ -74,7 +74,7 @@ def make_datasets(model_specs, mxml_folder, match_folder, pieces=None):
     folders = dict(mxml=mxml_folder, match=match_folder)
 
     for piece, files in pair_files(folders).items():
-        if pieces and piece not in pieces:
+        if pieces is not None and piece not in pieces:
             continue
         # load the score
         xml_fn = files['mxml'].pop()
