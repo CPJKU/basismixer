@@ -6,17 +6,25 @@ import logging
 
 import numpy as np
 
-from torch.utils.data import DataLoader
+# from torch.utils.data import DataLoader
+# from torch.utils.data import Dataset, ConcatDataset
 
 logging.basicConfig(level=logging.INFO)
 
-from basismixer import (BASIS_CONFIG_EXAMPLE,
-                        OnsetwiseDecompositionDynamicsCodec,
-                        TimeCodec,
-                        PerformanceCodec,
-                        make_dataset)
+# from partitura import load_musicxml, load_match
+# from partitura.score import expand_grace_notes
+# from basismixer.basisfunctions import make_basis
+from basismixer.data import make_datasets
+
+# from basismixer.performance_codec import get_performance_codec
+# from basismixer.utils import clip, get_unique_onset_idxs
+# from basismixer.utils import (pair_files,
+#                               get_unique_onset_idxs,
+#                               notewise_to_onsetwise,
+#                               onsetwise_to_notewise)
 
 from basismixer.utils import save_pyc_bz
+from basismixer.utils import pair_files
 
 LOGGER = logging.getLogger(__name__)
 
@@ -26,74 +34,26 @@ def main():
         description="Construct a dataset from files in the specified folders")
     parser.add_argument("xmlfolder", help="Folder with MusicXML files")
     parser.add_argument("matchfolder", help="Folder with match files")
-    parser.add_argument("--onsetwise",
-                        help=("Aggregate inputs and "
-                              "targets for sequential models"),
-                        action='store_true', default=False)
-    parser.add_argument("--targets",
-                        help="Indices of the targets in the dataset",
-                        nargs='+', type=int,
-                        default=None)
-    parser.add_argument('--save-data',
-                        help='Filename for saving the data',
-                        default='/tmp/data.pyc.bz')
-    parser.add_argument('--valid-pieces',
-                        help='Text files containing name of valid pieces',
-                        default=None)
-    # parser.add_argument("--basisconfig", type=str,
-    #                     help=("JSON file specifying a set of basis functions "
-    #                           "for each expressive target. If not specified "
-    #                           "a default configuration will be used."),
-    #                     default=BASIS_CONFIG_EXAMPLE)
     args = parser.parse_args()
 
-    valid_pieces = None
-    if args.valid_pieces is not None:
-        valid_pieces = np.loadtxt(args.valid_pieces, dtype=str)
+    model_specs = [dict(onsetwise=False,
+                        basis_functions=['polynomial_pitch_basis', 'duration_basis'],
+                        parameter_names=['velocity_trend', 'beat_period_std'],
+                        seq_len=100,
+                        ),
+                   dict(onsetwise=True,
+                        basis_functions=['duration_basis', 'articulation_basis', 'loudness_direction_basis'],
+                        parameter_names=['velocity_dev', 'timing'],
+                        seq_len=100,
+                        )
+                   ]
 
-    # basis_config = json.load(open(args.basisconfig))
-    basis_functions = ['polynomial_pitch_basis',
-                       'loudness_direction_basis',
-                       'tempo_direction_basis',
-                       'articulation_direction_basis',
-                       'articulation_basis',
-                       'duration_basis',
-                       'fermata_basis',
-                       'slur_basis',
-                       'metrical_basis'
-                       ]
-    dyn_codec = OnsetwiseDecompositionDynamicsCodec()
-    time_codec = TimeCodec(normalization='beat_period_standardized')
-    perf_codec = PerformanceCodec(time_codec, dyn_codec)
-
-    seq_len = 20
-    batch_size = 10
-
-    dataset, in_names, out_names = make_dataset(args.xmlfolder, args.matchfolder,
-                                                basis_functions, perf_codec, seq_len,
-                                                aggregate_onsetwise=args.onsetwise,
-                                                valid_pieces=valid_pieces)
-
-    if args.targets is not None:
-        targets_idxs = np.array(args.targets)
-        for d in dataset.datasets:
-            d.targets_idx = targets_idxs
-
-    if args.save_data is not None:
-        LOGGER.info('Saving data to {0}'.format(args.save_data))
-        save_pyc_bz(dict(dataset=dataset,
-                         in_names=in_names,
-                         out_names=out_names),
-                    args.save_data)
-    else:
-        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-        for i, (x, y) in enumerate(dataloader):
-            LOGGER.info('batch {} x_shape: {} y_shape: {}'.format(i, x.shape, y.shape))
-
-    LOGGER.info('Dataset has {} instances'.format(len(dataset)))
-    LOGGER.info('Inputs: {}'.format(', '.join(in_names)))
-    LOGGER.info('Outputs: {}'.format(', '.join(out_names)))
-
+    datasets = make_datasets(model_specs, args.xmlfolder, args.matchfolder)
+    for dataset, in_n, out_n in datasets:
+        x, y = dataset[0]
+        print(in_n, len(in_n), x.shape)
+        print(out_n, len(out_n), y.shape)
+        print()
 
 if __name__ == '__main__':
     main()

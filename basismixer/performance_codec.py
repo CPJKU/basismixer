@@ -776,7 +776,9 @@ def to_matched_score(part, ppart, alignment):
     # remove repetitions from aligment note ids
     for a in alignment:
         if a['label'] == 'match':
-            a['score_id'] = str(a['score_id']).split('-')[0]
+            # FOR MAGALOFF/ZEILINGER DO SPLIT:
+            # a['score_id'] = str(a['score_id']).split('-')[0]
+            a['score_id'] = str(a['score_id'])
 
     part_by_id = dict((n.id, n) for n in part.notes_tied)
     ppart_by_id = dict((n['id'], n) for n in ppart.notes)
@@ -808,47 +810,80 @@ def to_matched_score(part, ppart, alignment):
 
     return np.array(ms, dtype=fields), snote_ids
 
-VALID_DYNAMICS_PARAMS = [('velocity', ),
-                         ('velocity_trend', 'velocity_dev')]
 
-VALID_TEMPO_PARAMS  = [('beat_period', 'timing', 'articulation_log'),
-                       ('beat_period_log', 'timing', 'articulation_log'),
-                       ('beat_period_ratio', 'beat_period_mean', 'timing', 'articulation_log'),
-                       ('beat_period_ratio_log', 'beat_period_mean', 'timing', 'articulation_log'),
-                       ('beat_period_standardized', 'beat_period_mean', 'beat_period_std', 'timing', 'articulation_log')]
+# 
+def get_dynamics_codec(names):
+    dynamics_codec = NotewiseDynamicsCodec
 
-INCOMPLETE_TEMPO_PARAMS = [('beat_period', ),
-                       ('beat_period_log', ),
-                       ('beat_period_ratio', 'beat_period_mean', ),
-                       ('beat_period_ratio_log', 'beat_period_mean', ),
-                       ('beat_period_standardized', 'beat_period_mean', 'beat_period_std', )]
+    if 'velocity_trend' in names or 'velocity_dev' in names:
 
-VALID_PARAMETER_COMBINATIONS = [set(c[0] + c[1]) for c in itertools.product(VALID_TEMPO_PARAMS, VALID_DYNAMICS_PARAMS)]
-INCOMPLETE_PARAMETER_COMBINATIONS = [set(c[0] + c[1]) for c in itertools.product(INCOMPLETE_TEMPO_PARAMS, VALID_DYNAMICS_PARAMS)]
+        if 'velocity' in names:
 
-def get_performance_codec(parameter_names):
+            raise ValueError('Invalid combination of dynamics parameters')
 
-    if set(parameter_names) not in VALID_PARAMETER_COMBINATIONS:
-        if set(parameter_names) not in INCOMPLETE_PARAMETER_COMBINATIONS:
-            raise ValueError('Invalid combination of parameters')
+        dynamics_codec = OnsetwiseDecompositionDynamicsCodec
+
+    return dynamics_codec()
+
+
+def get_timing_codec(names):
+    normalization = 'beat_period'
+
+    options = [['beat_period'],
+               ['beat_period_log'],
+               ['beat_period_ratio', 'beat_period_mean'],
+               ['beat_period_ratio_log', 'beat_period_mean'],
+               ['beat_period_standardized', 'beat_period_mean', 'beat_period_std']]
+
+    normalization = options[0][0]
+    conflict = False
+
+    for i, option in enumerate(options):
+
+        option_set = set(option)
+
+        if option_set.intersection(names):
+
+            others = set([o for oo in options[:i] + options[i:]
+                          for o in oo])
+            bad = others.difference(option_set)
+
+            if bad.intersection(names):
+                conflict = True
+            else:
+                conflict = False
+                normalization = option[0]
+                break
+
+    if conflict:
+        raise ValueError('Invalid combination of tempo parameters')
+    else:
+        return TimeCodec(normalization=normalization)
+
+
+def get_performance_codec(names):
+    """Given a list of parameter names, return a performance codec that includes all
+    parameter names in the list. If no valid performance codec can be
+    constructed because of mutually exclusive parameter names or because of
+    unknown parameter names a ValueError is raised.
     
-    if 'velocity' in parameter_names:
-        dynamics_codec = NotewiseDynamicsCodec()
-    elif 'velocity_trend' in parameter_names:
-            dynamics_codec = OnsetwiseDecompositionDynamicsCodec()
+    Parameters
+    ----------
+    names: list
+        List of parameter names
+    
+    Returns
+    -------
+    PerformanceCodec
+    """
+    
+    dynamics_codec = get_dynamics_codec(names)
+    time_codec = get_timing_codec(names)
+    pc = PerformanceCodec(time_codec, dynamics_codec)
+    unknown_names = set(names).difference(pc.parameter_names)
+    if unknown_names:
+        raise ValueError('Invalid parameter names {}'.format(unknown_names))
+    else:
+        return pc
 
-    if 'beat_period' in parameter_names:
-        normalization = 'beat_period'
-    elif 'beat_period_log' in parameter_names:
-        normalization = 'beat_period_log'
-    elif 'beat_period_ratio' in parameter_names:
-        normalization = 'beat_period_ratio'
-    elif 'beat_period_ratio_log' in parameter_names:
-        normalization = 'beat_period_ratio_log'
-    elif 'beat_period_standardized' in parameter_names:
-        normalization = 'beat_period_standardized'
 
-    time_codec = TimeCodec(normalization=normalization)
-
-
-    return PerformanceCodec(time_codec, dynamics_codec)

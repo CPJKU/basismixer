@@ -8,7 +8,8 @@ from basismixer.performance_codec import (
     TimeCodec
 )
 from basismixer.basisfunctions import make_basis
-from basismixer.data import make_dataset
+# from basismixer.data import make_dataset
+from basismixer.data import make_datasets
 
 # define a version variable
 __version__ = pkg_resources.get_distribution("basismixer").version
