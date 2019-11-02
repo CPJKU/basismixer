@@ -102,13 +102,19 @@ def make_datasets(model_specs, mxml_folder, match_folder, pieces=None):
 
         for match in files['match']:
 
-            if not '_p01' in match:
+            # if not '_p01' in match:
+            #     continue
+            if 'Take' in match:
                 continue
-            
             LOGGER.info('Processing {}'.format(match))
 
             # load the performed part and the alignment from the match file
             ppart, alignment = load_match(match, first_note_at_zero=True)
+
+            # For Magaloff dataset (remove repetititions)
+            for n in alignment:
+                if n['label'] == 'match':
+                    n['score_id'] = n['score_id'].split('-')[0]
 
             # compute the targets
             targets, snote_ids = perf_codec.encode(part, ppart, alignment)
@@ -173,6 +179,7 @@ def piece_data_to_datasets(data, bf_idx_map, model_specs):
                                    targets, m_spec['seq_len'])
             
             m_datasets.append(ds)
+
 
         dataset_per_model.append(ConcatDataset(m_datasets))
         
