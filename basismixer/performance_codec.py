@@ -119,12 +119,13 @@ class PerformanceCodec(object):
         clip(velocities, 1, 127)
 
         notes = []
-        for nid, (onset, duration), velocity in zip(snote_ids, onsets_durations, velocities):
+        for nid, (onset, duration), velocity, pitch in zip(snote_ids, onsets_durations, velocities, pitches):
             notes.append(dict(id=nid,
+                              midi_pitch=int(pitch),
                               note_on=onset,
                               note_off=onset + duration,
                               sound_off=onset + duration,
-                              velocity=velocity))
+                              velocity=int(velocity)))
 
         ppart = PerformedPart(id=part_id,
                               part_name=part_name,
