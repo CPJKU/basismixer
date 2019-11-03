@@ -15,18 +15,81 @@ class InvalidBasisException(Exception):
     pass
 
 
-def list_basis_functions():
+def print_basis_functions():
+    """Print a list of all basisfunction names defined in this module,
+    with descriptions where available.
+
+    """
     module = sys.modules[__name__]
     doc_indent = 4
+    for name in list_basis_functions():
+        print('* {}'.format(name))
+        member = getattr(sys.modules[__name__], name)
+        if member.__doc__:
+            print(' ' * doc_indent + member.__doc__.replace('\n', ' ' * doc_indent + '\n'))
+
+
+def list_basis_functions():
+    """Return a list of all basisfunction names defined in this module.
+
+    The basisfunction names listed here can be specified by name in
+    the `make_basis` function. For example:
+
+    >>> basis, names = make_basis(part, ['metrical_basis', 'articulation_basis'])
+
+    Returns
+    -------
+    list
+        A list of strings
+
+    """
+    module = sys.modules[__name__]
+    bfs = []
+    exclude = {'make_basis'}
     for name in dir(module):
+        if name in exclude:
+            continue
         member = getattr(sys.modules[__name__], name)
         if isinstance(member, types.FunctionType) and name.endswith('_basis'):
-            print('* {}'.format(name))
-            if member.__doc__:
-                print(' ' * doc_indent + member.__doc__.replace('\n', ' ' * doc_indent + '\n'))
+            bfs.append(name)
+    return bfs
 
 
 def make_basis(part, basis_functions):
+    """Compute the specified basis functions for a part.
+
+    The function returns the computed basis functions as a N x M
+    array, where N equals `len(part.notes_tied)` and M equals the
+    total number of descriptors of all basis functions that occur in
+    part.
+
+    Furthermore the function returns the names of the basis functions.
+    A list of strings of size M. The names have the name of the
+    function prepended to the name of the descriptor. For example if a
+    function named `abc_basis` returns descriptors `a`, `b`, and `c`,
+    then the list of names returned by `make_basis(part,
+    ['abc_basis'])` will be ['abc_basis.a', 'abc_basis.b',
+    'abc_basis.c'].
+
+    Parameters
+    ----------
+    part : Part
+        The score as a Part instance
+    basis_functions : list
+        A list of basis functions. Elements of the list can be either
+        the functions themselves or the names of a basis function as
+        strings (or a mix). The basis functions specified by name are
+        looked up in the `basismixer.basisfunctions` module.
+
+    Returns
+    -------
+    basis : ndarray
+        The basis functions
+    names : list
+        The basis names
+    
+    """
+    
     acc = []
 
     for bf in basis_functions:
@@ -72,15 +135,11 @@ def make_basis(part, basis_functions):
 def polynomial_pitch_basis(part):
     """Polynomial pitch basis.
 
-    Parameters
-    ----------
-    part: type
-        Description of `part`
-
-    Returns
-    -------
-    type
-        Description of return value
+    Returns:
+    * pitch : the midi pitch of the note
+    * pitch^2 : the square of the midi pitch
+    * pitch^3 : the power of 3 of the midi pitch
+    
     """
 
     basis_names = ['pitch', 'pitch^2', 'pitch^3']
@@ -97,20 +156,14 @@ def polynomial_pitch_basis(part):
 def duration_basis(part):
     """Duration basis.
 
-    Parameters
-    ----------
-    part: type
-        Description of `part`
+    Returns:
+    * duration : the duration of the note
 
-    Returns
-    -------
-    type
-        Description of return value
     """
 
     basis_names = ['duration']
 
-    nd = np.array([(n.start.t, n.end.t) for n in part.notes_tied])
+    nd = np.array([(n.start.t, n.end_tied.t) for n in part.notes_tied])
     bm = part.beat_map
 
     durations_beat = bm(nd[:, 1]) - bm(nd[:, 0])
@@ -122,15 +175,13 @@ def duration_basis(part):
 def grace_basis(part):
     """Grace basis.
 
-    Parameters
-    ----------
-    part: type
-        Description of `part`
+    Returns:
+    * grace_note : 1 when the note is a grace note, 0 otherwise
+    * n_grace : the length of the grace note sequence to which 
+                this note belongs (0 for non-grace notes)
+    * grace_pos : the (1-based) position of the grace note in 
+                  the sequence (0 for non-grace notes)
 
-    Returns
-    -------
-    type
-        Description of return value
     """
 
     basis_names = ['grace_note', 'n_grace', 'grace_pos']
@@ -143,12 +194,29 @@ def grace_basis(part):
             n_grace = n.grace_seq_len
             W[i, 0] = 1
             W[i, 1] = n_grace
-            W[i, 2] = n_grace - sum(1 for _ in n.iter_grace_seq())
+            W[i, 2] = n_grace - sum(1 for _ in n.iter_grace_seq()) + 1
 
     return W, basis_names
 
 
 def loudness_direction_basis(part):
+    """The loudness directions in part.
+
+    This function returns a varying number of descriptors, depending
+    on which directions are present. Some directions are grouped
+    together. For example 'decrescendo' and 'diminuendo' are encoded
+    together in a descriptor 'loudness_decr'. The descriptor names of
+    textual directions such as 'adagio' are the verbatim directions.
+    
+    Some possible descriptors:
+    * p : piano
+    * f : forte
+    * pp : pianissimo
+    * loudness_incr : crescendo direction
+    * loudness_decr : decrescendo or diminuendo direction
+    
+    """
+
     onsets = np.array([n.start.t for n in part.notes_tied])
     N = len(onsets)
 
@@ -181,6 +249,17 @@ def loudness_direction_basis(part):
 
 
 def tempo_direction_basis(part):
+    """The tempo directions in part.
+
+    This function returns a varying number of descriptors, depending
+    on which directions are present. Some directions are grouped
+    together. For example 'adagio' and 'molto adagio' are encoded
+    together in a descriptor 'adagio'.
+    
+    Some possible descriptors:
+    * adagio : directions like 'adagio', 'molto adagio'
+
+    """
     onsets = np.array([n.start.t for n in part.notes_tied])
     N = len(onsets)
 
@@ -217,6 +296,8 @@ def tempo_direction_basis(part):
 
 
 def articulation_direction_basis(part):
+    """
+    """
     onsets = np.array([n.start.t for n in part.notes_tied])
     N = len(onsets)
 
@@ -310,6 +391,15 @@ def basis_function_activation(direction):
 
 
 def slur_basis(part):
+    """Slur basis.
+
+    Returns:
+    * slur_incr : a ramp function that increases from 0 
+                  to 1 over the course of the slur
+    * slur_decr : a ramp function that decreases from 1 
+                  to 0 over the course of the slur
+
+    """
     names = ['slur_incr', 'slur_decr']
     onsets = np.array([n.start.t for n in part.notes_tied])
     slurs = part.iter_all(score.Slur)
@@ -328,6 +418,17 @@ def slur_basis(part):
 
 
 def articulation_basis(part):
+    """Articulation basis.
+
+    This basis returns articulation-related note annotations, such as accents, legato, and tenuto.
+
+    Possible descriptors:
+    * accent : 1 when the note has an annotated accent sign
+    * legato : 1 when the note has an annotated legato sign
+    * staccato : 1 when the note has an annotated staccato sign
+    ...
+
+    """
     names = ['accent', 'strong-accent', 'staccato', 'tenuto',
              'detached-legato', 'staccatissimo', 'spiccato',
              'scoop', 'plop', 'doit', 'falloff', 'breath-mark',
@@ -354,17 +455,23 @@ def articulation_basis(part):
 
     return W, names
 
-# for a subset of the articulations do e.g.
-def staccato_basis(part):
-    W, names = articulation_basis(part)
-    if 'staccato' in names:
-        i = names.index('staccato')
-        return W[:, i:i + 1], ['staccato']
-    else:
-        return np.empty(len(W)), []
+# # for a subset of the articulations do e.g.
+# def staccato_basis(part):
+#     W, names = articulation_basis(part)
+#     if 'staccato' in names:
+#         i = names.index('staccato')
+#         return W[:, i:i + 1], ['staccato']
+#     else:
+#         return np.empty(len(W)), []
 
 
 def fermata_basis(part):
+    """Fermata basis.
+
+    Returns:
+    * fermata : 1 when the note coincides with a fermata sign.
+
+    """
     names = ['fermata']
     onsets = np.array([n.start.t for n in part.notes_tied])
     W = np.zeros((len(onsets), 1))
@@ -374,6 +481,17 @@ def fermata_basis(part):
 
 
 def metrical_basis(part):
+    """Metrical basis
+
+    This basis encodes the metrical position in the bar. For example
+    the first beat in a 3/4 meter is encoded in a binary descriptor
+    'metrical_3_4_0', the fifth beat in a 6/8 meter as
+    'metrical_6_8_4', etc. Any positions that do not fall on a beat
+    are encoded in a basis suffixed '_weak'. For example a note
+    starting on the second 8th note in a bar of 4/4 meter will have a
+    non-zero value in the 'metrical_4_4_weak' descriptor.
+    
+    """
     notes = part.notes_tied
     ts_map = part.time_signature_map
     bm = part.beat_map
@@ -407,6 +525,40 @@ def metrical_basis(part):
         W[:, j] = bf
         names[j] = name
 
+    return W, names
+
+def vertical_neighbor_basis(part):
+    """Vertical neighbor basis.
+
+    Describes various aspects of simultaneously starting notes.
+
+    Returns:
+    * n_total :
+    * n_above :
+    * n_below :
+    * highest_pitch :
+    * lowest_pitch :
+    * pitch_range : 
+
+    """
+    # the list of descriptors
+    names = ['n_total', 'n_above', 'n_below',
+             'highest_pitch', 'lowest_pitch', 'pitch_range']
+    # notes
+    notes = part.notes_tied
+
+    W = np.empty((len(notes), len(names)))
+    for i, n in enumerate(part.notes_tied):
+        neighbors = np.array([n.midi_pitch for n in
+                              n.start.starting_objects[score.Note]])
+        max_pitch = np.max(neighbors)
+        min_pitch = np.min(neighbors)
+        W[i, 0] = len(neighbors)
+        W[i, 1] = np.sum(neighbors > n.midi_pitch)
+        W[i, 2] = np.sum(neighbors < n.midi_pitch)
+        W[i, 3] = max_pitch
+        W[i, 4] = min_pitch
+        W[i, 5] = max_pitch - min_pitch
     return W, names
 
 
