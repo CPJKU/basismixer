@@ -43,7 +43,7 @@ CONFIG = [
                     args=dict(hidden_size=128)),
          train_args=dict(
              optimizer=['Adam', dict(lr=1e-4)],
-             epochs=3,
+             epochs=1000,
              save_freq=10,
              early_stopping=100,
              batch_size=1000,
@@ -68,7 +68,7 @@ CONFIG = [
                               hidden_size=64)),
          train_args=dict(
              optimizer=['Adam', dict(lr=1e-4)],
-             epochs=3,
+             epochs=1000,
              save_freq=5,
              early_stopping=100,
              batch_size=50,
