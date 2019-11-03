@@ -102,7 +102,7 @@ class PerformanceCodec(object):
 
         clip(pitches, 1, 127)
         
-        # Post-processing
+        # Pre-processing
         if 'beat_period_mean' in parameters.dtype.names:
             parameters['beat_period_mean'] = np.ones(len(parameters)) * parameters['beat_period_mean'].mean()
         if 'beat_period_std' in parameters.dtype.names:
@@ -449,16 +449,14 @@ class NotewiseDynamicsCodec(object):
     parameter_names = ('velocity', )
 
     def encode(self, pitches, velocities, *args, **kwargs):
-        return np.array(velocities, dtype=[('velocity', 'f4')])
+        return np.array(velocities / 127.0, dtype=[('velocity', 'f4')])
         # return (velocities / 127.0).reshape(-1, 1)
 
     def decode(self, pitches, parameters, *args, **kwargs):
 
         velocity = parameters['velocity']
-        if np.max(velocity) <= 1:
-            return np.round(velocity * 127.0)
-        else:
-            return np.round(velocity)
+
+        return np.round(velocity * 127.0)
 
 
 class OnsetwiseDecompositionDynamicsCodec(object):
@@ -491,11 +489,7 @@ class OnsetwiseDecompositionDynamicsCodec(object):
     def decode(self, parameters, *args, **kwargs):
 
         velocity = parameters['velocity_trend'] - parameters['velocity_dev']
-
-        if np.max(velocity) <= 1:
-            return np.round(velocity * 127.0)
-        else:
-            return np.round(velocity)
+        return np.round(velocity * 127.0)
 
 #### Codecs for time-related parameters ####
 
