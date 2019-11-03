@@ -9,6 +9,7 @@ import numpy as np
 import torch
 
 from torch.utils.data.sampler import SubsetRandomSampler
+from torch.utils.data import DataLoader, ConcatDataset
 
 logging.basicConfig(level=logging.INFO)
 
@@ -145,8 +146,8 @@ if __name__ == '__main__':
             LOGGER.info('Saving data to {}'.format(args.datasets))
             save_pyc_bz(datasets, args.datasets)
 
-    for (dataset, in_names, out_names), config in zip(datasets, model_config):
-
+    for (mdatasets, in_names, out_names), config in zip(datasets, model_config):
+        dataset = ConcatDataset(mdatasets)
         batch_size = config['train_args'].pop('batch_size')
 
         #### Create train and validation data loaders #####
