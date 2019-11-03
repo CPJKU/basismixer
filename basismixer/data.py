@@ -80,7 +80,14 @@ def make_datasets(model_specs, mxml_folder, match_folder, pieces=None,
                                for n in model_spec['basis_functions']])
     folders = dict(mxml=mxml_folder, match=match_folder)
 
-    for piece, files in pair_files(folders).items():
+    # by_prefix should be used when there are multiple performances
+    # (assuming the matchfile names consist of the piece name + a
+    # suffix). When there is only a single performance per piece (like for
+    # magaloff/zeilinger), we assume musicxml and matchfile have the same
+    # name (up to the file extension), so we switch by_prefix of in the
+    # file pairing. In that way files are only paired if they are have
+    # identical names (up to the extension).
+    for piece, files in pair_files(folders, by_prefix=not quirks).items():
         if pieces is not None and piece not in pieces:
             continue
         # load the score

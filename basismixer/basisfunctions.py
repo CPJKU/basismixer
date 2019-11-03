@@ -140,11 +140,10 @@ def grace_basis(part):
     for i, n in enumerate(notes):
         grace = isinstance(n, score.GraceNote)
         if grace:
-            W[i, 0] = 1
             n_grace = n.grace_seq_len
+            W[i, 0] = 1
             W[i, 1] = n_grace
             W[i, 2] = n_grace - sum(1 for _ in n.iter_grace_seq())
-            print(n.start.t, n_grace, W[i, 2])
 
     return W, basis_names
 

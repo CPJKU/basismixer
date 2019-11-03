@@ -32,6 +32,7 @@ CONFIG = [
                           'articulation_basis',
                           'duration_basis',
                           # my_basis,
+                          'grace_basis',
                           'slur_basis',
                           'fermata_basis',
                           'metrical_basis'],
@@ -54,6 +55,7 @@ CONFIG = [
                           'articulation_basis',
                           'duration_basis',
                           'slur_basis',
+                          'grace_basis',
                           'fermata_basis',
                           'metrical_basis'],
          parameter_names=['velocity_trend', 'beat_period_standardized',
@@ -95,6 +97,8 @@ if __name__ == '__main__':
         'will be assumed that datasets in the specified file correspond to '
         'the model configuration. If specifed and the path does not exist, '
         'the datasets are computed and saved to the specified path.'))
+    parser.add_argument("--quirks", action='store_true',
+                        help="Use this option when training on magaloff/zeilinger")
     parser.add_argument("--pieces", help="Text file with valid pieces",
                         default=None)
     parser.add_argument("--model-config", help="Model configuration",
@@ -135,7 +139,8 @@ if __name__ == '__main__':
         datasets = make_datasets(model_config,
                                  args.xmlfolder,
                                  args.matchfolder,
-                                 pieces=args.pieces)
+                                 pieces=args.pieces,
+                                 quirks=args.quirks)
         if args.datasets:
             LOGGER.info('Saving data to {}'.format(args.datasets))
             save_pyc_bz(datasets, args.datasets)
