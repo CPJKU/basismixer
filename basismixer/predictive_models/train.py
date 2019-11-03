@@ -220,7 +220,7 @@ class NNTrainer(ABC):
                     if is_best:
                         validations_wo_improvement = 0
                     else:
-                        validations_wo_improvement += 1
+                        validations_wo_improvement += self.save_freq
 
                     if validations_wo_improvement > self.early_stopping:
                         break

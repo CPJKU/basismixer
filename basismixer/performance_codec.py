@@ -101,6 +101,12 @@ class PerformanceCodec(object):
         pitches = snote_info['pitch'][sort_idx]
 
         clip(pitches, 1, 127)
+        
+        # Post-processing
+        if 'beat_period_mean' in parameters.dtype.names:
+            parameters['beat_period_mean'] = np.ones(len(parameters)) * parameters['beat_period_mean'].mean()
+        if 'beat_period_std' in parameters.dtype.names:
+            parameters['beat_period_std'] = np.ones(len(parameters)) * parameters['beat_period_std'].mean()
 
         dynamics_params = parameters[list(self.dynamics_codec.parameter_names)][sort_idx]
         time_params = parameters[list(self.time_codec.parameter_names)][sort_idx]
