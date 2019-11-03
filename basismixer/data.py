@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import logging
+import os
 
 import numpy as np
 from torch.utils.data import Dataset, ConcatDataset
@@ -17,13 +18,14 @@ from basismixer.performance_codec import get_performance_codec
 LOGGER = logging.getLogger(__name__)
 
 
-def make_datasets(model_specs, mxml_folder, match_folder, pieces=None):
+def make_datasets(model_specs, mxml_folder, match_folder, pieces=None,
+                  quirks=False):
     """Create an dataset for each in a list of model specifications.
 
     A model specification is a dictionary with the keys 'onsetwise'
     (bool), 'basis_functions' (a list of basis function names),
-    'parameter_names' (a list of parameter names) and 'seq_len' (an integer). For
-    example:
+    'parameter_names' (a list of parameter names) and 'seq_len' (an
+    integer). For example:
 
     { 
       'onsetwise': False,
@@ -47,13 +49,18 @@ def make_datasets(model_specs, mxml_folder, match_folder, pieces=None):
     pieces : list or None, optional
         If not None only pieces with a piecename occurring in the list
         are included in the datasets
+    quirks : bool, optional
+        If True some changes are made to make the function work with
+        the Magaloff/Zeilinger datasets. Defaults to False.
 
     Returns
     -------
     list
-        A list of triplets (ConcatDataSet, input_names, output_names) 
-        with the same length as `model_specs`.
-    
+        A list of triplets (datasets, input_names, output_names)  with
+        the same length as `model_specs`. `datasets` is a list of
+        datasets (one per performance), `input_names` and
+        `output_names` are labels to identify the inputs and outputs,
+        respectively
     
     """
 
@@ -104,12 +111,17 @@ def make_datasets(model_specs, mxml_folder, match_folder, pieces=None):
 
             # if not '_p01' in match:
             #     continue
-            if 'Take' in match:
-                continue
+            name = os.path.splitext(os.path.basename(match))[0]
+            
             LOGGER.info('Processing {}'.format(match))
 
             # load the performed part and the alignment from the match file
             ppart, alignment = load_match(match, first_note_at_zero=True)
+
+            if quirks:
+                for n in alignment:
+                    if n['label'] == 'match':
+                        n['score_id'] = n['score_id'].split('-')[0]
 
             # compute the targets
             targets, snote_ids = perf_codec.encode(part, ppart, alignment)
@@ -121,7 +133,7 @@ def make_datasets(model_specs, mxml_folder, match_folder, pieces=None):
             score_onsets = part.note_array[matched_subset_idxs]['onset']
             unique_onset_idxs = get_unique_onset_idxs(score_onsets)
 
-            data.append((basis_matched, bf_idx, targets, unique_onset_idxs))
+            data.append((basis_matched, bf_idx, targets, unique_onset_idxs, name))
     
     return piece_data_to_datasets(data, bf_idx_map, model_specs)
 
@@ -152,7 +164,7 @@ def piece_data_to_datasets(data, bf_idx_map, model_specs):
         m_datasets = []
         m_input_names = []
 
-        for bf, idx, targets, uox in data:
+        for bf, idx, targets, uox, name in data:
             # idx: the global indices that this piece has
 
             # the subset of basisfunctions that this model is interested in:
@@ -172,12 +184,12 @@ def piece_data_to_datasets(data, bf_idx_map, model_specs):
                 targets = notewise_to_onsetwise(targets, uox)
             
             ds = BasisMixerDataSet(bf, model_idx_subset, n_basis,
-                                   targets, m_spec['seq_len'])
+                                   targets, m_spec['seq_len'], name)
             
             m_datasets.append(ds)
 
 
-        dataset_per_model.append(ConcatDataset(m_datasets))
+        dataset_per_model.append(m_datasets)
         
     return zip(dataset_per_model, input_names_per_model, output_names_per_model)
 
@@ -217,6 +229,8 @@ class BasisMixerDataSet(Dataset):
     seq_len : int, optional
         The sequence length. If `seq_len` > `N` the Dataset will have
         zero-length. Defaults to 1.
+    name : str or None, optional
+        A name for the dataset. Defaults to None
 
     Attributes
     ----------
@@ -230,14 +244,17 @@ class BasisMixerDataSet(Dataset):
         See Parameters Section
     seq_len : int
         See Parameters Section.
+    name : str or None
+        See Parameters Section.
 
     """
-    def __init__(self, basis, idx, n_basis, targets, seq_len=1):
+    def __init__(self, basis, idx, n_basis, targets, seq_len=1, name=None):
         self.basis = basis
         self.idx = idx
         self.n_basis = n_basis
         self.targets = targets
         self.seq_len = seq_len
+        self.name = name
 
     def __getitem__(self, i):
 

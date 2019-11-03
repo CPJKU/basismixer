@@ -8,7 +8,6 @@ import os
 import numpy as np
 import torch
 
-from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
 
 logging.basicConfig(level=logging.INFO)
@@ -193,11 +192,6 @@ if __name__ == '__main__':
                                     valid_dataloader=valid_loader,
                                     out_dir=model_out_dir,
                                     **config['train_args'])
-        trainer.compute_data_stats()
-
-        # torch.save(model.state_dict(), '/tmp/m.pkl')
-        # params = torch.load('/tmp/m.pkl')
-        # model = construct_model(config['model'], params)
 
         trainer.train()
 

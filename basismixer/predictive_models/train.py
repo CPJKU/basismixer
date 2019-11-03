@@ -166,6 +166,8 @@ class NNTrainer(ABC):
 
     def train(self):
 
+        self.compute_data_stats()
+        
         train_loss_name = getattr(self.train_loss, 'name', 'Train Loss')
         train_fn = os.path.join(self.out_dir, 'train_loss.txt')
         # Initialize TrainProgressMonitors
@@ -373,7 +375,7 @@ class SupervisedTrainer(NNTrainer):
         self.lr_scheduler = lr_scheduler
 
     def train_step(self, epoch, *args, **kwargs):
-        # set model for training
+
         self.model.train()
         losses = []
         bar = tqdm(enumerate(self.train_dataloader), total=len(self.train_dataloader))
