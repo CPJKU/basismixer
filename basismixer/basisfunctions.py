@@ -119,6 +119,36 @@ def duration_basis(part):
     return W, basis_names
 
 
+def grace_basis(part):
+    """Grace basis.
+
+    Parameters
+    ----------
+    part: type
+        Description of `part`
+
+    Returns
+    -------
+    type
+        Description of return value
+    """
+
+    basis_names = ['grace_note', 'n_grace', 'grace_pos']
+
+    notes = part.notes_tied
+    W = np.zeros((len(notes), 3))
+    for i, n in enumerate(notes):
+        grace = isinstance(n, score.GraceNote)
+        if grace:
+            W[i, 0] = 1
+            n_grace = n.grace_seq_len
+            W[i, 1] = n_grace
+            W[i, 2] = n_grace - sum(1 for _ in n.iter_grace_seq())
+            print(n.start.t, n_grace, W[i, 2])
+
+    return W, basis_names
+
+
 def loudness_direction_basis(part):
     onsets = np.array([n.start.t for n in part.notes_tied])
     N = len(onsets)
