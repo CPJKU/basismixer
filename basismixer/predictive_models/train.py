@@ -100,16 +100,16 @@ class NNTrainer(ABC):
 
         in_means = torch.cat(in_means, axis=0)
         in_vars = torch.cat(in_vars, axis=0)
-        in_sizes = torch.tensor(in_sizes)
+        in_sizes = torch.tensor(in_sizes).to(self.device).type(self.dtype)
 
         out_means = torch.cat(out_means, axis=0)
         out_vars = torch.cat(out_vars, axis=0)
-        out_sizes = torch.tensor(out_sizes)
+        out_sizes = torch.tensor(out_sizes).to(self.device).type(self.dtype)
 
-        in_N = in_sizes.sum()
+        in_N = in_sizes.sum().to(self.device).type(self.dtype)
         in_mean = (in_means.T * in_sizes).T.sum(0)/in_N
 
-        out_N = out_sizes.sum()
+        out_N = out_sizes.sum().to(self.device).type(self.dtype)
         out_mean = (out_means.T * out_sizes).T.sum(0)/out_N
 
         if var_type == 'population':
