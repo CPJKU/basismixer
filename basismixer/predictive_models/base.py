@@ -47,7 +47,7 @@ class FullPredictiveModel(nn.Module):
 
     def __init__(self, models, input_names, output_names,
                  default_values={},
-                 overlapping_output_strategy='FIFO'):
+                 overlapping_output_strategy='mean'):
         super().__init__()
         self.models = nn.ModuleList(
             construct_model(m) if isinstance(m, dict) else m for m in models
