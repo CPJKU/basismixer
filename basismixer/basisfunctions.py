@@ -527,6 +527,59 @@ def metrical_basis(part):
 
     return W, names
 
+def metrical_strength_basis(part):
+    """Metrical strength basis
+
+    This basis encodes the beat phase (relative position of a note within
+    the measure), as well as metrical strength of common time signatures.
+    """
+    notes = part.notes_tied
+    ts_map = part.time_signature_map
+    bm = part.beat_map
+
+    names = ['beat_phase',
+             'metrical_strength_downbeat',
+             'metrical_strength_secondary',
+             'metrical_strength_weak']
+    
+    W = np.zeros((len(notes), len(names)))
+    for i, n in enumerate(notes):
+
+        beats, beat_type = ts_map(n.start.t).astype(int)
+        measure = next(n.start.iter_prev(score.Measure, eq=True), None)
+
+        if beats == 4:
+            # for 4/4
+            sec_beat = 2
+        elif beats == 6:
+            # for 6/8
+            sec_beat = 3
+        elif beats == 12:
+            # for 12/8
+            sec_beat = 6
+        else:
+            sec_beat = None
+
+        if measure:
+            measure_start = measure.start.t
+        else:
+            measure_start = 0
+
+        pos = bm(n.start.t) - bm(measure_start)
+
+        m_pos = np.mod(pos, beats)
+
+        W[i, 0] = m_pos / beats
+        
+        if m_pos == 0:
+            W[i, 1] = 1
+        elif m_pos == sec_beat:
+            W[i, 2] = 1
+        else:
+            W[i, 3] = 1
+
+    return W, names
+
 def vertical_neighbor_basis(part):
     """Vertical neighbor basis.
 
