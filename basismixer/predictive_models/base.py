@@ -131,7 +131,8 @@ class PredictiveModel(ABC):
     def __init__(self, input_names=None,
                  output_names=None,
                  is_rnn=False,
-                 input_type=None):
+                 input_type=None,
+                 requires_onset_info=False):
         # name of input features
         self.input_names = input_names
         # name of output features
@@ -140,6 +141,12 @@ class PredictiveModel(ABC):
         self.is_rnn = is_rnn
         # if the input is onsetwise or notewise
         self.input_type = input_type
+        # if the model requires onset information
+        self.requires_onset_info = requires_onset_info
+
+        if self.requires_onset_info:
+            if 'onset' not in self.input_names:
+                raise ValueError('This model requires onset information as input')
 
     @abstractmethod
     def __call__(self, *args, **kwargs):
@@ -201,13 +208,15 @@ class NNModel(nn.Module, PredictiveModel):
                  input_type=None,
                  dtype=torch.float32,
                  device=None,
-                 is_rnn=False):
+                 is_rnn=False,
+                 requires_onset_info=False):
         nn.Module.__init__(self)
         PredictiveModel.__init__(self,
                                  input_names=input_names,
                                  output_names=output_names,
                                  is_rnn=is_rnn,
-                                 input_type=input_type)
+                                 input_type=input_type,
+                                 requires_onset_info=requires_onset_info)
         self.dtype = dtype
         self.device = device if device is not None else torch.device('cpu')
         self.to(self.device)

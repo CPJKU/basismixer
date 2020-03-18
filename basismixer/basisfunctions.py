@@ -171,6 +171,27 @@ def duration_basis(part):
     W.shape = (-1, 1)
     return W, basis_names
 
+def onset_basis(part):
+    """Onset basis
+    
+    Returns:
+    * onset : the onset of the note in beats
+    * rel_position : position of the note in the score between 0 (the beginning of the piece) and 1 (the end of the piece)
+    
+    TODO:
+    * rel_position_repetition
+    """
+    basis_names = ['onset', 'rel_position']
+
+    onsets = np.array([n.start.t for n in part.notes_tied])
+    bm = part.beat_map
+    onsets_beat = bm(onsets)
+    rel_position = normalize(onsets_beat, method='minmax')
+
+    W = np.column_stack((onset_beat, rel_position))
+
+    return W, basis_names
+
 
 def grace_basis(part):
     """Grace basis.
@@ -659,7 +680,12 @@ def normalize(data, method='minmax'):
     if method == 'minmax':
         vmin = np.min(data, 0)
         vmax = np.max(data, 0)
-        return (data - vmin) / (vmax - vmin)
+
+        if np.isclose(vmin, vmax):
+            # Return all values as 0 or as 1?
+            return np.zeros_like(data)
+        else:
+            return (data - vmin) / (vmax - vmin)
     elif method == 'tanh':
         return np.tanh(data)
     elif method == 'tanh_unity':

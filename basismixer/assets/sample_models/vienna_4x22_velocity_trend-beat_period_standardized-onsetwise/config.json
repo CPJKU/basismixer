@@ -1,0 +1,58 @@
+{
+  "constructor": [
+    "basismixer.predictive_models",
+    "RecurrentModel"
+  ],
+  "args": {
+    "recurrent_size": 128,
+    "n_layers": 1,
+    "hidden_size": 64,
+    "input_names": [
+      "polynomial_pitch_basis.pitch",
+      "polynomial_pitch_basis.pitch^2",
+      "polynomial_pitch_basis.pitch^3",
+      "loudness_direction_basis.mf",
+      "loudness_direction_basis.loudness_incr",
+      "loudness_direction_basis.loudness_decr",
+      "loudness_direction_basis.pp",
+      "loudness_direction_basis.p",
+      "loudness_direction_basis.f",
+      "loudness_direction_basis.sf",
+      "loudness_direction_basis.ff",
+      "tempo_direction_basis.andante",
+      "tempo_direction_basis.andantino",
+      "tempo_direction_basis.lento",
+      "tempo_direction_basis.tempo_decr",
+      "articulation_basis.accent",
+      "articulation_basis.staccato",
+      "duration_basis.duration",
+      "slur_basis.slur_incr",
+      "slur_basis.slur_decr",
+      "fermata_basis.fermata",
+      "grace_basis.grace_note",
+      "grace_basis.n_grace",
+      "grace_basis.grace_pos",
+      "metrical_basis.metrical_3_4_0",
+      "metrical_basis.metrical_3_4_1",
+      "metrical_basis.metrical_3_4_weak",
+      "metrical_basis.metrical_3_4_2",
+      "metrical_basis.metrical_6_8_0",
+      "metrical_basis.metrical_6_8_weak",
+      "metrical_basis.metrical_6_8_2",
+      "metrical_basis.metrical_6_8_3",
+      "metrical_basis.metrical_6_8_5",
+      "metrical_basis.metrical_6_8_1",
+      "metrical_basis.metrical_6_8_4",
+      "metrical_basis.metrical_2_4_0",
+      "metrical_basis.metrical_2_4_weak",
+      "metrical_basis.metrical_2_4_1"
+    ],
+    "input_size": 38,
+    "output_names": [
+      "velocity_trend",
+      "beat_period_standardized"
+    ],
+    "output_size": 2,
+    "input_type": "onsetwise"
+  }
+}

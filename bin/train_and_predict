@@ -59,7 +59,7 @@ def main():
         basis = make_basis(part, None)
         snotes = extract_snote_attributes(part, None)
         predicted_targets = model.predict(basis)
-        predicted_performance_part = pcodec.decode(snotes, predicted_targets)
+        predicted_performance_part = pcodec.decode(snotes, predicted_targets)                                                                                                                                          
 
     
 if __name__ == '__main__':
