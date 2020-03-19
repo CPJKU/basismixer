@@ -1,5 +1,7 @@
 # basismixer
-The Basis Mixer is an implementation of the [Basis Function Modeling framework for musical expression](http://www.carloscancinochacon.com/documents/online_extras/phd_thesis/basis_function_models.html).
+The Basis Mixer is an implementation of the [Basis Function Modeling framework for musical expression](http://www.carloscancinochacon.com/documents/online_extras/phd_thesis/basis_function_models.html). 
+
+The basic idea in this framework is that structural properties of a musical piece (given as a score), which are believed to be relevant for performance decisions, can be modeled in a simple and uniform way via so-called basis functions: numeric features that capture specific aspects of a musical note and its surroundings. A predictive model of performance can then predict appropriate patterns for expressive performance dimensions such as tempo, timing, dynamics and articulation from these basis functions.
 
 ## Setup
 
