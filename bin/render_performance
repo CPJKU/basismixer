@@ -1,6 +1,12 @@
 #!/usr/bin/env python
 """
-Render a performance
+This program generates an expressive performance of an input music score (in any 
+format supported by the Partitura package) using a (trained) predictive model.
+
+TODO
+----
+* Export performance in the text-based format used for the Con Espressione! Exhibit
+* Plot predictions
 """
 import argparse
 import json
@@ -16,136 +22,87 @@ from partitura import (save_performance_midi,
                        load_musicxml,
                        load_score_midi,
                        load_via_musescore)
-from partitura.score import expand_grace_notes, unfold_part_maximal
-from basismixer.predictive_models import FullPredictiveModel, construct_model
-from basismixer.performance_codec import get_performance_codec
+from partitura.score import (expand_grace_notes,
+                             unfold_part_maximal)
+
+from basismixer import TOY_MODEL_CONFIG
 from basismixer.basisfunctions import make_basis
 from basismixer.performance_codec import get_performance_codec
-from basismixer import TOY_MODEL_CONFIG
+from basismixer.predictive_models import (FullPredictiveModel,
+                                          construct_model)
+from basismixer.utils import (sanitize_performed_part,
+                              post_process_predictions,
+                              get_default_values,
+                              get_all_output_names,
+                              DEFAULT_VALUES,
+                              RENDER_CONFIG)
 
-
+logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
 
 
-DEFAULT_VALUES = dict(
-    velocity_trend=55,
-    velocity_dev=0,
-    velocity=55,
-    beat_period=60/108,
-    beat_period_log=np.log2(60/108),
-    beat_period_ratio=1,
-    beat_period_ratio_log=0,
-    beat_period_standardized=0,
-    beat_period_mean=60/108,
-    beat_period_std=0.1,
-    timing=0,
-    articulation_log=0
-)
-
-RENDER_CONFIG = dict(
-    velocity_trend=dict(
-        normalization=None,
-        velocity_trend_max=55,
-        velocity_trend_min=5),
-    velocity_dev=dict(
-        normalization=None,
-        velocity_dev_max=5,
-        velocity_dev_min=3),
-    velocity=dict(
-        normalization=None,
-        max=108,
-        min=20),
-    beat_period=dict(
-        normalization=None,
-        max=3,
-        min=60 / 200),
-    
-)
-
-
 def load_model(model_config, default_values=DEFAULT_VALUES):
+    """
+    Load a saved model
 
+    Parameters
+    ----------
+    model_config : iterable
+        A list of tuples each containing the filename of the config file of the model
+        and the filename of the parameters of the model.
+    default_values : dict
+        Default values for the parameters not included in the trained model(s) (e.g., the models
+        might just be predicting velocity, and the rest of the parameters (beat_period, timing, etc.)
+        will be set to these parameters.
+    
+    Returns
+    -------
+    full_model : basismixer.predictive_models.FullPredictiveModel
+       An instance of a FullPredictiveModel for generating expressive performances.
+    output_names : list
+       List of the expressive parameters included in the models loaded from `model_config`.
+    """
+
+    # Load the models
     models = []
     for con, par in model_config:
+        # Load config file
         model_config = json.load(open(con))
+        # Load the parameters
         params = torch.load(par, map_location=torch.device('cpu'))['state_dict']
+        # Construct the model according to its configuration and set the parameters
         model = construct_model(model_config, params)
+        # append the model to the list of models
         models.append(model)
-        
+
+    # Get all output names (expressive parameters) predicted by the models
     output_names = list(set([name for out_name in [m.output_names for m in models] for name in out_name]))
+    # Get the name of the inputs (basis functions) included in the models
     input_names = list(set([name for in_name in [m.input_names for m in models] for name in in_name]))
     input_names.sort()
     output_names.sort()
 
-    # all_output_names = list(default_values.keys())
+    # Get the appropriate list of expressive parameters for generating a performance
     all_output_names = get_all_output_names(output_names)
+    # Get the default values for those parameters not predicted by the loaded models
     def_values = get_default_values(default_values, all_output_names)
+    # Construct the full model
     full_model = FullPredictiveModel(models=models,
                                      input_names=input_names,
                                      output_names=all_output_names,
                                      default_values=def_values)
-
+    # Set of expressive parameters not included in the predicted models
     not_in_model_names = set(all_output_names).difference(output_names)
     
-    print('Trained models include the following parameters:\n'
-          + '\n'.join(output_names) + '\n\n'
-          'The following parameters will use default values:\n'+
-          '\n' + '\n'.join(['{0}:{1:.2f}'.format(k, default_values[k])
-                            for k in not_in_model_names]))
+    LOGGER.info('Trained models include the following parameters:\n'
+                + '\n'.join(output_names) + '\n\n'
+                'The following parameters will use default values:\n'+
+                '\n' + '\n'.join(['{0}:{1:.2f}'.format(k, default_values[k])
+                                  for k in not_in_model_names]))
 
-    
     return full_model, output_names
 
-def get_all_output_names(names, error_on_conflicting_names=False):
-    """Get all output names from list of output names of the models
-    """
-
-    tempo_options = [('beat_period', ),
-                     ('beat_period_log', ),
-                     ('beat_period_ratio', 'beat_period_mean'),
-                     ('beat_period_ratio_log', 'beat_period_mean'),
-                     ('beat_period_standardized', 'beat_period_mean', 'beat_period_std')]
-
-    # Use the simplest parameters
-    dynamics_params = ('velocity', )
-    tempo_params = ('beat_period', )
     
-    # Give priority to models with onset-wise parameters
-    if 'velocity_trend' in names or 'velocity_dev' in names:
-        dynamics_params = ('velocity_trend', 'velocity_dev')
-        if 'velocity' in names:
-            if error_on_conflicting_names:
-                raise ValueError('Invalid combination of dynamics parameters')
-
-    
-    for i, option in enumerate(tempo_options):
-
-        option_set = set(option)
-
-        if option_set.intersection(names):
-
-            others = set([o for oo in tempo_options[:i] + tempo_options[i:]
-                          for o in oo])
-            bad = others.difference(option_set)
-
-            if len(bad.intersection(names)) > 0 and error_on_conflicting_names:
-                raise ValueError('Invalid combination of tempo parameters')
-            tempo_params = option
-            break
-
-
-    params = dynamics_params + tempo_params + ('timing', 'articulation_log')
-
-    return params
-    
-def get_default_values(default_values, names):
-    """
-    Get dictionary of default values
-    """
-    def_values = dict()
-    for name in names:
-        def_values[name] = default_values.get(name, DEFAULT_VALUES[name])
-    return def_values
 
 def load_score(score_fn):
     """
@@ -181,12 +138,34 @@ def load_score(score_fn):
         raise ValueError('The score is not in one of the supported formats')
 
 def compute_basis_from_score(score_fn, input_names):
+    """
+    Load a score and extract input score features through the basis functions
+
+    Parameters
+    ----------
+    score_fn : str
+        Filename of the score. Must be in one of the formats supported by partitura.
+    input_names : list
+        List of input basis functions to extract score features. See `basismixer.basisfunctions`
+        for the full list of functions supported
     
+    Returns
+    -------
+    basis : np.ndarray
+        A 2D array with dimensions (n_notes, n_basis_functions), where n_notes is the number of
+        notes in the score and n_basis_functions == len(input_names) is the number of basis
+        functions. Each i-th row in this array corresponds to the basis functions evaluated for the
+        i-th note in the score. The order of the notes is the same as in `part.notes_tied` (see below).
+    part : partitura.score.Part
+        A `Part` object representing the score.
+    """
     # Load score
     part = load_score(score_fn)
+    # Expand grace notes
+    # TODO: perhaps give grace notes a temporal order besides just expanding the duration?
     expand_grace_notes(part)
     part = unfold_part_maximal(part)
-
+    
     # Compute basis functions
     _basis, bf_names = make_basis(part, list(set([bf.split('.')[0] for bf in input_names])))
     basis = np.zeros((len(_basis), len(input_names)))
@@ -199,42 +178,44 @@ def compute_basis_from_score(score_fn, input_names):
 
     return basis, part
 
-def sanitize_performed_part(ppart):
-    """Avoid negative durations in notes.
-
-    """
-    for n in ppart.notes:
-
-        if n['note_off'] < n['note_on']:
-            n['note_off'] = n['note_on']
-
-        if n['sound_off'] < n['note_off']:
-            n['sound_off'] = n['note_off']
-
-def post_process_predictions(predictions):
-    max_articulation = 1.5
-    max_bps = 1
-    max_timing = 0.2
-    predictions['articulation_log'] = np.clip(predictions['articulation_log'],
-                                              -max_articulation, max_articulation)
-    predictions['velocity_dev'] = np.clip(predictions['velocity_dev'], 0, 0.8)
-    predictions['beat_period_standardized'] = np.clip(predictions['beat_period_standardized'],
-                                                      -max_bps, max_bps)
-    predictions['timing'] = np.clip(predictions['timing'],
-                                    -max_timing, max_timing)
-    predictions['velocity_trend'][predictions['velocity_trend'] > 0.8] = 0.8
-    predictions['velocity_trend'] *= 0.7
 
 
 def predict(model_config, score_fn, default_values=DEFAULT_VALUES):
+    """
+    Main method for predicting a performance.
+    
+    Parameters
+    ----------
+     model_config : iterable
+        A list of tuples each containing the filename of the config file of the model
+        and the filename of the parameters of the model.
+    score_fn : str
+        Filename of the score. Must be in one of the formats supported by partitura.
+    default_values : dict
+        Default values for the parameters not included in the trained model(s) (e.g., the models
+        might just be predicting velocity, and the rest of the parameters (beat_period, timing, etc.)
+        will be set to these parameters.
+
+    Returns
+    -------
+    predictions : structured array
+        Numpy structured array containing the predictions by the model. The fields are the names
+        of the parameters specified by the `model`.
+    model : basismixer.predictive_models.FullPredictiveModel
+       An instance of a FullPredictiveModel for generating expressive performances.
+    part : partitura.score.Part
+        A `Part` object representing the score.
+    """
     # Load predictive model
     model, predicted_parameter_names = load_model(model_config, default_values=DEFAULT_VALUES)
 
     # Compute score representation
     basis, part = compute_basis_from_score(score_fn, model.input_names)
 
+    # Score positions for each note in the score
     score_onsets = part.beat_map([n.start.t for n in part.notes_tied])
 
+    # make predictions
     predictions = model.predict(basis, score_onsets)
 
     return predictions, model, part
@@ -243,11 +224,12 @@ def predict(model_config, score_fn, default_values=DEFAULT_VALUES):
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser('Render a Performance as a MIDI file')
+    parser = argparse.ArgumentParser('Render a piano performance of a given score file '
+                                     'and save it as a MIDI file')
 
-    parser.add_argument('--score-fn', '-s',
+    parser.add_argument('score_fn',
                         help='Score file (MusicXML, MIDI or formats supported by MuseScore 3)')
-    parser.add_argument('--midi_fn', '-m',
+    parser.add_argument('midi_fn',
                         help='Output MIDI file')
     parser.add_argument('--model-config', '-c',
                         help='JSON file specifying the configuration and parameters of the model')
@@ -259,13 +241,12 @@ if __name__ == '__main__':
                         default=None)
 
     args = parser.parse_args()
-
-
+    # Use toy model if no model is given
     if args.model_config is None:
         model_config = TOY_MODEL_CONFIG
     else:
         model_config = json.load(open(args.model_config))
-
+    # Use default config files if not given
     if args.default_values is None:
         default_values = DEFAULT_VALUES
     else:
@@ -276,18 +257,19 @@ if __name__ == '__main__':
     else:
         render_config = json.load(open(rendering_config))
         
-
+    # Predict performance
     preds, model, part = predict(model_config=model_config,
                                  score_fn=args.score_fn,
                                  default_values=default_values)
-    
+    # Post process predictions
     post_process_predictions(preds, render_config)
 
     # decode predictions
     perf_codec = get_performance_codec(model.output_names)
     predicted_ppart = perf_codec.decode(part, preds)
+    # Sanitize part 
     sanitize_performed_part(predicted_ppart)
-
+    # Save MIDI file
     save_performance_midi(predicted_ppart, args.midi_fn)
     
     
