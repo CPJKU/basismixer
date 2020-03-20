@@ -97,21 +97,24 @@ def get_all_output_names(names, error_on_conflicting_names=False):
             if error_on_conflicting_names:
                 raise ValueError('Invalid combination of dynamics parameters')
 
-    
-    for i, option in enumerate(tempo_options):
+    # overlap between names and options as the cardinality of the intersection 
+    tp_overlap = np.array([len(set(option).intersection(names)) for option in tempo_options])
 
-        option_set = set(option)
+    # if no tempo param is predicted, choose the simplest parameter
+    if np.all(tp_overlap == 0):
+        tempo_params = tempo_options[0]
 
-        if option_set.intersection(names):
+    else:
+        best_option = np.where(tp_overlap == tp_overlap.max())[0]
 
-            others = set([o for oo in tempo_options[:i] + tempo_options[i:]
-                          for o in oo])
-            bad = others.difference(option_set)
-
-            if len(bad.intersection(names)) > 0 and error_on_conflicting_names:
+        if len(best_option) > 1:
+            if error_on_conflicting_names:
                 raise ValueError('Invalid combination of tempo parameters')
-            tempo_params = option
-            break
+
+            # if 'beat_period_mean' in names and 'beat_period_std' not in names:
+            #     tempo_params = tempo_options[2]
+            
+        tempo_params = tempo_options[best_option[0]]
 
     params = dynamics_params + tempo_params + ('timing', 'articulation_log')
 
