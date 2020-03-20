@@ -77,7 +77,8 @@ class RecurrentModel(NNModel):
     def __init__(self,
                  input_size, output_size,
                  recurrent_size, hidden_size,
-                 n_layers, dropout=0.0,
+                 n_layers=1, dropout=0.0,
+                 dense_nl=nn.ReLU(),
                  bidirectional=True,
                  batch_first=True,
                  input_names=None,
@@ -106,6 +107,7 @@ class RecurrentModel(NNModel):
                              self.bidirectional else self.recurrent_size)
         self.dense = nn.Linear(in_features=dense_in_features,
                                out_features=self.hidden_size)
+        self.dense_nl = nn.Identity() if dense_nl is None else dense_nl
         self.output = nn.Linear(in_features=self.hidden_size,
                                 out_features=output_size)
 
@@ -128,7 +130,7 @@ class RecurrentModel(NNModel):
         output, h = self.rnn(x, h0)
         flatten_shape = (self.recurrent_size * 2
                          if self.bidirectional else self.recurrent_size)
-        dense = self.dense(output.contiguous().view(-1, flatten_shape))
+        dense = self.dense_nl(self.dense(output.contiguous().view(-1, flatten_shape)))
         y = self.output(dense)
         y = y.view(batch_size, seq_len, self.output_size)
 

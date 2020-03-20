@@ -94,6 +94,7 @@ def make_datasets(model_specs, mxml_folder, match_folder, pieces=None,
         xml_fn = files['mxml'].pop()
         LOGGER.info('Processing {}'.format(xml_fn))
         part = load_musicxml(xml_fn)
+        bm = part.beat_map
 
         # get indices of the unique onsets
         # expand grace note durations (necessary for correct computation of
@@ -137,7 +138,12 @@ def make_datasets(model_specs, mxml_folder, match_folder, pieces=None,
             matched_subset_idxs = np.array([nid_dict[nid] for nid in snote_ids])
             basis_matched = basis[matched_subset_idxs]
 
-            score_onsets = part.note_array[matched_subset_idxs]['onset']
+            score_onsets = bm([n.start.t for n in part.notes_tied])[matched_subset_idxs]
+            # try:
+            #     score_onsets = part.note_array[matched_subset_idxs]['onset']
+            # except:
+            #     import pdb
+            #     pdb.set_trace()
             unique_onset_idxs = get_unique_onset_idxs(score_onsets)
 
             data.append((basis_matched, bf_idx, targets, unique_onset_idxs, name))

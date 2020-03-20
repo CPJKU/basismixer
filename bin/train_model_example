@@ -36,14 +36,18 @@ CONFIG = [
                           'grace_basis',
                           'slur_basis',
                           'fermata_basis',
-                          'metrical_basis'],
+                          # 'metrical_basis'
+                          'metrical_strength_basis',
+                          'time_signature_basis',
+                          'relative_score_position_basis'
+         ],
          parameter_names=['velocity_dev', 'timing', 'articulation_log'],
          seq_len=1,
          model=dict(constructor=['basismixer.predictive_models', 'FeedForwardModel'],
                     args=dict(hidden_size=128)),
          train_args=dict(
              optimizer=['Adam', dict(lr=1e-4)],
-             epochs=1000,
+             epochs=10,
              save_freq=10,
              early_stopping=100,
              batch_size=1000,
@@ -58,7 +62,11 @@ CONFIG = [
                           'slur_basis',
                           'grace_basis',
                           'fermata_basis',
-                          'metrical_basis'],
+                          # 'metrical_basis'
+                          'metrical_strength_basis',
+                          'time_signature_basis',
+                          'relative_score_position_basis'
+         ],
          parameter_names=['velocity_trend', 'beat_period_standardized',
                           'beat_period_mean', 'beat_period_std'],
          seq_len=100,
@@ -68,7 +76,7 @@ CONFIG = [
                               hidden_size=64)),
          train_args=dict(
              optimizer=['Adam', dict(lr=1e-4)],
-             epochs=1000,
+             epochs=10,
              save_freq=5,
              early_stopping=100,
              batch_size=50,

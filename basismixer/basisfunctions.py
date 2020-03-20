@@ -176,21 +176,25 @@ def onset_basis(part):
     
     Returns:
     * onset : the onset of the note in beats
-    * rel_position : position of the note in the score between 0 (the beginning of the piece) and 1 (the end of the piece)
+    * score_position : position of the note in the score between 0 (the beginning of the piece) and 1 (the end of the piece)
     
     TODO:
     * rel_position_repetition
     """
-    basis_names = ['onset', 'rel_position']
+    basis_names = ['onset', 'score_position']
 
     onsets = np.array([n.start.t for n in part.notes_tied])
     bm = part.beat_map
     onsets_beat = bm(onsets)
     rel_position = normalize(onsets_beat, method='minmax')
 
-    W = np.column_stack((onset_beat, rel_position))
+    W = np.column_stack((onsets_beat, rel_position))
 
     return W, basis_names
+
+def relative_score_position_basis(part):
+    W, names = onset_basis(part)
+    return W[:, 1:], names[1:]
 
 
 def grace_basis(part):
@@ -598,6 +602,39 @@ def metrical_strength_basis(part):
             W[i, 2] = 1
         else:
             W[i, 3] = 1
+
+    return W, names
+
+def time_signature_basis(part):
+    """TIme Signature basis
+    This basis encodes the time signature of the note in two sets of one-hot vectors,
+    a one hot encoding of number of beats and a one hot encoding of beat type
+    """
+
+    notes = part.notes_tied
+    ts_map = part.time_signature_map
+    possible_beats = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 'other']
+    possible_beat_types = [1, 2, 4, 8, 16, 'other']
+    W_beats = np.zeros((len(notes), len(possible_beats)))
+    W_types = np.zeros((len(notes), len(possible_beat_types)))
+
+    names = (['time_signature_num_{0}'.format(b) for b in possible_beats] +
+             ['time_signature_den_{0}'.format(b) for b in possible_beat_types])
+    
+    for i, n in enumerate(notes):
+        beats, beat_type = ts_map(n.start.t).astype(int)
+
+        if beats in possible_beats:
+            W_beats[i, beats - 1] = 1
+        else:
+            W_beats[i, -1] = 1
+
+        if beat_type in possible_beat_types:
+            W_types[i, possible_beat_types.index(beat_type)] = 1
+        else:
+            W_types[i, -1] = 1
+
+    W = np.column_stack((W_beats, W_types))
 
     return W, names
 
