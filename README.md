@@ -5,24 +5,22 @@ The basic idea in this framework is that structural properties of a musical piec
 
 ## Setup
 
-0. **Optional** Create an environment for the dependencies
+The easiest way to install the basismixer package is with pip.
 
-	```bash
-	conda env create -f environment.yml
-	```
+```bash
+git clone https://github.com/OFAI/basismixer.git
+pip install ./basismixer
+```
+
+Optionally, we include a [Conda](https://docs.conda.io/en/latest/miniconda.html) environment for setting all of the dependencies of the package.
+
+```bash
+git clone https://github.com/OFAI/basismixer.git
+cd basismixer
+conda env create -f environment.yml
+```
 	
-	As of this writing (March 2020), it is recommended to install the Partitura package directly from the [GitHub repository](https://github.com/OFAI/partitura) instead of from the version in PyPI. This can be done by simply running
 
-	```bash
-	pip install git+https://github.com/OFAI/partitura.git@develop
-	```
-
-1. The easiest way to install the basismixer package is with pip.
-
-	```bash
-	git clone https://github.com/OFAI/basismixer.git
-	pip install ./basismixer
-	```
 
 ## Usage
 
@@ -35,9 +33,16 @@ We prepared a collection of Jupyter notebooks demonstrating this package, which 
 
 ### Generating an Expressive Performance
 
+If the package was set up using the provided conda environment, remember to first activate the environment:
+
+```bash
+conda activate basismixer
+```
+
 To generate an expressive performance
 
 ```bash
+cd path/to/basismixer
 ./bin/render_piece [OPTIONS] score_file midi_file.mid
 ```
 
