@@ -48,7 +48,7 @@ cd path/to/basismixer
 
 The score (`score_file`) can be in one of the formats supported by the [partitura package](https://partitura.readthedocs.io/en/latest/). 
 
-This repository includes a small model trained on the Vienna 4x22 dataset. This model was prepared for the tutorial on Computational Models of Expressive Performance presented at the ISMIR 2019. **This is demonstration model and is not intended to represent the state-of-the-art.**
+This repository includes a small model trained on the Vienna 4x22 dataset. This model was prepared for the tutorial on Computational Models of Expressive Performance presented at the ISMIR 2019. **This is a demonstration model and is not intended to represent the state-of-the-art.**
 
 For more help see
 
@@ -102,7 +102,13 @@ See notebook [`03_predictive_models.ipynb`](https://github.com/mgrachten/basismi
 
 ## License
 
-The code in this package is licensed under the GNU General Public License v3 (GPLv3). For details, please see the LICENSE file.
+The code in this package is licensed under the GNU General Public License v3 (GPLv3). For details, please see the [LICENSE](https://github.com/OFAI/basismixer/blob/develop/LICENSE) file. 
+
+The data and sample trained models included in this repository (e.g., the models in `basismixer/assets/sample_models`) are licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
+
+Data and model files usually have (but are not limited to) .npy, .npz, .h5, .hdf5, .pkl, .pth or .mat file extensions.
+
+If you want to include any of these files (or a variation or modification thereof) or technology which utilizes them in a commercial product, please contact [Gerhard Widmer](https://www.jku.at/en/institute-of-computational-perception/about-us/people/gerhard-widmer/).
 
 ## Acknowledgements
 
