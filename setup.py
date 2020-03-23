@@ -16,7 +16,7 @@ URL = 'https://github.com/OFAI/basismixer'
 EMAIL = ''
 AUTHOR = 'Carlos Cancino-Chacón, Maarten Grachten'
 REQUIRES_PYTHON = '>=3.5'
-VERSION = '0.0.1'
+VERSION = '0.1.0'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
