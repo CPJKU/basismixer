@@ -15,6 +15,29 @@ def get_object_from_location(location, name):
     module = importlib.import_module(location)
     return getattr(module, name)
 
+def get_nonlinearity(nonlinearity):
+
+    error = ValueError('The nonlinearity has to be a string, a tuple with the first element being '
+                       'a string and the second a dictionary specifying the keyworkd arguments '
+                       'for building a nonlinearity or a callable')
+    if nonlinearity is None:
+        nonlinearity = nn.Identity()
+    elif isinstance(nonlinearity, str):
+        try:
+            nonlinearity = getattr(nn, nonlinearity)()
+        except:
+            raise ValueError('Nonlinearity not found')
+    elif isinstance(nonlinearity, (list, tuple)):
+        if not isinstance(nonlinearity[0], str):
+            raise ValueError('If the given nonlinearity is a tuple, the first entry needs to be a string')
+        nonlinearity = getattr(nn, nonlinearity[0])(**nonlinearity[1])
+
+    elif not callable(nonlinearity):
+        raise error
+
+    return nonlinearity
+        
+
 
 def set_params(m, params):
     m.load_state_dict(params)

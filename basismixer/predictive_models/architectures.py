@@ -2,7 +2,7 @@ import numpy
 import torch
 from torch import nn
 
-from basismixer.predictive_models.base import NNModel, standardize
+from basismixer.predictive_models.base import NNModel, standardize, get_nonlinearity
 
 
 class FeedForwardModel(NNModel):
@@ -44,6 +44,8 @@ class FeedForwardModel(NNModel):
             if len(nonlinearity) != len(self.hidden_size):
                 raise ValueError('`nonlinearity` should be the same length ',
                                  'as `hidden_size`.')
+
+        self.nonlinearity = [get_nonlinearity(nl) for nl in self.nonlinearity]
 
         if self.output_names is None:
             self.output_names = [str(i) for i in range(self.output_size)]
@@ -107,7 +109,7 @@ class RecurrentModel(NNModel):
                              self.bidirectional else self.recurrent_size)
         self.dense = nn.Linear(in_features=dense_in_features,
                                out_features=self.hidden_size)
-        self.dense_nl = nn.Identity() if dense_nl is None else dense_nl
+        self.dense_nl = get_nonlinearity(dense_nl)
         self.output = nn.Linear(in_features=self.hidden_size,
                                 out_features=output_size)
 
