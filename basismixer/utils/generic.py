@@ -127,3 +127,7 @@ def clip(v, low=0, high=127):
     if len(too_high) > 0:
         # LOGGER.warning('Clipping {} high values'.format(too_high))
         v[too_high] = high
+
+
+
+    

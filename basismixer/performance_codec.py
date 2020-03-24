@@ -488,7 +488,17 @@ class OnsetwiseDecompositionDynamicsCodec(object):
 
     def decode(self, parameters, *args, **kwargs):
 
-        velocity = parameters['velocity_trend'] - parameters['velocity_dev']
+        score_onsets = kwargs.get('score_onsets', None)
+        if score_onsets is None:
+            velocity = parameters['velocity_trend'] - parameters['velocity_dev']
+        else:
+            unique_onset_idxs = get_unique_onset_idxs(score_onsets)
+            velocity = parameters['velocity_trend']
+            vel_dev = parameters['velocity_dev']
+            for uix in unique_onset_idxs:
+                vd = vel_dev[uix]
+                vd[vd.argmin()] = 0
+                velocity[uix] -= vd
         return np.round(velocity * 127.0)
 
 #### Codecs for time-related parameters ####
