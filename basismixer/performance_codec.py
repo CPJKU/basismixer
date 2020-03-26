@@ -95,6 +95,7 @@ class PerformanceCodec(object):
                               dtype=[('pitch', 'i4'), ('onset', 'f4'), ('offset', 'f4')])
         sort_idx = np.lexsort((snote_info['pitch'], snote_info['onset']))
 
+
         bm = part.beat_map
         onsets = bm(snote_info['onset'])[sort_idx]
         durations = (bm(snote_info['offset']) - bm(snote_info['onset']))[sort_idx]

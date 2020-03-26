@@ -10,7 +10,8 @@ from .generic import (
 from .music import (
     get_unique_onset_idxs,
     notewise_to_onsetwise,
-    onsetwise_to_notewise)
+    onsetwise_to_notewise,
+    load_score)
 
 
 from .rendering import (

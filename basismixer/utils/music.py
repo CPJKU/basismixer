@@ -3,6 +3,42 @@ Music related utilities
 """
 import numpy as np
 
+from partitura import load_musicxml, load_score_midi, load_via_musescore
+
+def load_score(score_fn):
+    """
+    Load a score format supported by partitura. Currently the accepted formats are
+    MusicXML and MIDI (native Python support), plus all formats for which MuseScore
+    has support import-support (requires MuseScore 3)
+
+    Parameters
+    ----------
+    score_fn : str
+        Filename of the score to load.
+
+    Returns
+    -------
+    :class:`partitura.score.Part`
+        A score part.
+    """
+    part = None
+    try:
+        return load_musicxml(score_fn, force_note_ids=True)
+    except:
+        pass
+    try:
+        return load_score_midi(score_fn)
+    except:
+        pass
+    try:
+        return load_via_musescore(score_fn, force_note_ids=True)
+    except:
+        pass
+
+    if part is None:
+        raise ValueError('The score is not in one of the supported formats')
+
+
 def get_unique_onset_idxs(onsets, eps=1e-6, return_unique_onsets=False):
     """
     Get unique onsets and their indices.
