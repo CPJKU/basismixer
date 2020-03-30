@@ -20,7 +20,8 @@ import torch
 
 from partitura import save_performance_midi, save_match
 from partitura.score import (expand_grace_notes,
-                             unfold_part_maximal)
+                             unfold_part_maximal,
+                             remove_grace_notes)
 
 from basismixer import TOY_MODEL_CONFIG
 from basismixer.basisfunctions import make_basis
@@ -125,10 +126,12 @@ def compute_basis_from_score(score_fn, input_names):
     """
     # Load score
     part = load_score(score_fn)
+    # Delete grace notes
+    remove_grace_notes(part)
     # Expand grace notes
     # TODO: perhaps give grace notes a temporal order besides just expanding the duration?
-    expand_grace_notes(part)
-    part = unfold_part_maximal(part)
+    # expand_grace_notes(part)
+    # part = unfold_part_maximal(part)
     
     # Compute basis functions
     _basis, bf_names = make_basis(part, list(set([bf.split('.')[0] for bf in input_names])))

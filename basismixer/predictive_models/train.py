@@ -59,6 +59,12 @@ class NNTrainer(ABC):
         if resume_from_saved_model is not None:
             self.resume_checkpoint(resume_from_saved_model)
 
+        self.batch_first = True
+
+        if hasattr(self.model, 'batch_first'):
+            self.batch_first = self.model.batch_first
+
+
     @abstractmethod
     def train_step(self, *args, **kwargs):
         pass
@@ -385,6 +391,10 @@ class SupervisedTrainer(NNTrainer):
                 input = input.to(self.device).type(self.dtype)
                 target = target.to(self.device).type(self.dtype)
 
+            if not self.batch_first:
+                input = input.transpose(0, 1)
+                target = target.transpose(0, 1)
+
             output = self.model(input)
             loss = self.train_loss(output, target)
 
@@ -410,6 +420,10 @@ class SupervisedTrainer(NNTrainer):
                 if self.device is not None:
                     target = target.to(self.device).type(self.dtype)
                     input = input.to(self.device).type(self.dtype)
+
+                if not self.batch_first:
+                    input = input.transpose(0, 1)
+                    target = target.transpose(0, 1)
 
                 output = self.model(input)
 

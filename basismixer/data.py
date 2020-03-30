@@ -268,9 +268,34 @@ class BasisMixerDataSet(Dataset):
         self.targets = targets
         self.seq_len = seq_len
         self.name = name
+        self.piecewise = seq_len == -1
+        
 
     def __getitem__(self, i):
 
+        if self.piecewise:
+            return self._get_item_piecewise(i)
+        else:
+            return self._get_item_sequencewise(i)
+        # if i + self.seq_len > len(self.basis):
+        #     raise IndexError
+
+        # x = np.zeros((self.seq_len, self.n_basis))
+        # x[:, self.idx] = self.basis[i:i + self.seq_len]
+
+        # y = self.targets[i:i + self.seq_len, :]
+
+        # return x, y
+
+    def _get_item_piecewise(self, i):
+        if i > 0:
+            raise IndexError
+        x = np.zeros((len(self.basis), self.n_basis))
+        x[:, self.idx] = self.basis
+
+        return x, self.targets
+
+    def _get_item_sequencewise(self, i):
         if i + self.seq_len > len(self.basis):
             raise IndexError
 
@@ -281,8 +306,13 @@ class BasisMixerDataSet(Dataset):
 
         return x, y
 
+        
+
     def __len__(self):
-        return max(0, len(self.basis) - self.seq_len)
+        if self.piecewise:
+            return 1
+        else:
+            return max(0, len(self.basis) - self.seq_len)
 
 # def make_dataset(mxml_folder, match_folder, basis_functions, perf_codec, seq_len,
 #                  aggregate_onsetwise=False, valid_pieces=None):
