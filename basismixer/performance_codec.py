@@ -81,6 +81,7 @@ class PerformanceCodec(object):
                snote_ids=None,
                sanitize=True, part_id=None,
                part_name=None,
+               return_alignment=False,
                *args, **kwargs):
 
         snotes = part.notes_tied
@@ -133,12 +134,22 @@ class PerformanceCodec(object):
                               note_off=onset + duration,
                               sound_off=onset + duration,
                               velocity=int(velocity)))
-
+        # * rescale according to default values?
         ppart = PerformedPart(id=part_id,
                               part_name=part_name,
                               notes=notes)
-        # * rescale according to default values
-        return ppart
+
+        if return_alignment:
+            alignment = []
+            for snote, pnote in zip(part.notes_tied, ppart.notes):
+                alignment.append(dict(label='match',
+                                      score_id=snote.id,
+                                      performance_id=pnote['id']))
+
+            return ppart, alignment
+        else:
+
+            return ppart
 
 
 #### Methods for Time-related parameters ####

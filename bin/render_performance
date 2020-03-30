@@ -18,7 +18,7 @@ import subprocess
 import numpy as np
 import torch
 
-from partitura import save_performance_midi
+from partitura import save_performance_midi, save_match
 from partitura.score import (expand_grace_notes,
                              unfold_part_maximal)
 
@@ -203,6 +203,9 @@ if __name__ == '__main__':
     parser.add_argument('--render-config', '-r',
                         help='JSON file specifying the configuration for post-processing the generated performance',
                         default=None)
+    parser.add_argument('--save-match', '-m',
+                        help='Export Score-Performance alignment in Matchfile format',
+                        action='store_true', default=False)
 
     args = parser.parse_args()
     # Use toy model if no model is given
@@ -230,10 +233,25 @@ if __name__ == '__main__':
 
     # decode predictions
     perf_codec = get_performance_codec(model.output_names)
-    predicted_ppart = perf_codec.decode(part, preds)
+    predicted_ppart = perf_codec.decode(part=part,
+                                        parameters=preds,
+                                        return_alignment=args.save_match)
+
+    if args.save_match:
+        predicted_ppart, alignment = predicted_ppart
+
     # Sanitize part 
     sanitize_performed_part(predicted_ppart)
+    
     # Save MIDI file
     save_performance_midi(predicted_ppart, args.midi_fn)
-    
+
+    if args.save_match:
+        save_match(alignment=alignment,
+                   ppart=predicted_ppart,
+                   spart=part,
+                   out=args.midi_fn.replace('.mid', '.match'),
+                   piece=os.path.basename(args.score_fn),
+                   performer='Basis Mixer')
+
     

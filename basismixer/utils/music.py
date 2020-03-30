@@ -23,7 +23,7 @@ def load_score(score_fn):
     """
     part = None
     try:
-        return load_musicxml(score_fn, force_note_ids=True)
+        return load_musicxml(score_fn, force_note_ids='keep')
     except:
         pass
     try:
@@ -31,7 +31,7 @@ def load_score(score_fn):
     except:
         pass
     try:
-        return load_via_musescore(score_fn, force_note_ids=True)
+        return load_via_musescore(score_fn, force_note_ids='keep')
     except:
         pass
 
