@@ -26,10 +26,10 @@ RENDER_CONFIG = dict(
     velocity_trend=dict(
         # normalization=dict(type='standardize',
         #                    mean=55 / 127,
-        #                    std=15 / 127),
+        #                    std=10 / 127),
         normalization=None,
         max=108 / 127,
-        min=5 / 127),
+        min=15 / 127),
     velocity_dev=dict(
         # normalization=dict(type='standardize',
         #                    mean=5 / 127,
@@ -42,6 +42,9 @@ RENDER_CONFIG = dict(
         max=108 / 127,
         min=20 / 127),
     beat_period=dict(
+        # normalization=dict(type='standardize',
+        #                    mean=60 / 72,
+        #                    std=0.1),
         normalization=None,
         max=3,
         min=60 / 200),

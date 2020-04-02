@@ -192,8 +192,20 @@ class PredictiveModel(ABC):
             mx = torch.tensor(x).type(self.dtype).to(self.device)
         else:
             mx = x.type(self.dtype).to(self.device)
+
+        transpose_batch = False
+        if hasattr(self, 'batch_first'):
+            if not self.batch_first:
+                print('transpose')
+                mx = mx.transpose(0, 1)
+                transpose_batch = True
         # model predictions
         predictions = self(mx)
+
+        if transpose_batch:
+            predictions = predictions.transpose(0, 1)
+
+        
 
         # predictions as numpy array
         if isinstance(predictions, torch.Tensor):
