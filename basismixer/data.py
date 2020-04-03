@@ -7,7 +7,7 @@ import numpy as np
 from torch.utils.data import Dataset, ConcatDataset
 
 from partitura import load_musicxml, load_match
-from partitura.score import expand_grace_notes
+from partitura.score import expand_grace_notes, remove_grace_notes
 from basismixer.basisfunctions import make_basis
 from basismixer.utils import (pair_files,
                               get_unique_onset_idxs,
@@ -19,7 +19,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def make_datasets(model_specs, mxml_folder, match_folder, pieces=None,
-                  quirks=False):
+                  quirks=False, gracenotes='remove'):
     """Create an dataset for each in a list of model specifications.
 
     A model specification is a dictionary with the keys 'onsetwise'
@@ -99,7 +99,10 @@ def make_datasets(model_specs, mxml_folder, match_folder, pieces=None,
         # get indices of the unique onsets
         # expand grace note durations (necessary for correct computation of
         # targets)
-        expand_grace_notes(part)
+        if gracenotes == 'remove':
+            remove_grace_notes(part)
+        else:
+            expand_grace_notes(part)
 
         # compute the basis functions
         basis, bf_names = make_basis(part, all_basis_functions)

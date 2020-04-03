@@ -167,13 +167,18 @@ def encode_articulation(score_durations, performed_durations,
         pd = performed_durations[idx]
 
         # indices of notes with duration 0 (grace notes)
-        grace_mask = sd == 0
+        grace_mask = sd <= 0
 
         # Grace notes have an articulation ratio of 1
         sd[grace_mask] = 1
         pd[grace_mask] = bp
         # Compute log articulation ratio
         articulation[idx] = np.log2(pd / (bp * sd))
+
+    articulation[np.where(np.isnan(articulation))] = 0
+    if len(np.where(np.isnan(articulation))[0]) != 0:
+        import pdb
+        pdb.set_trace()
 
     return articulation
 
@@ -824,7 +829,8 @@ def to_matched_score(part, ppart, alignment):
         sn, n = note_pairs[i]
         sn_on, sn_off = beat_map([sn.start.t, sn.end_tied.t])
         sn_dur = sn_off - sn_on
-        n_dur = n['sound_off'] - n['note_on']
+        # hack for notes with negative durations
+        n_dur = max(n['sound_off'] - n['note_on'], 60 / 200 * 0.25)
         ms.append((sn_on, sn_dur, sn.midi_pitch, n['note_on'], n_dur, n['velocity']))
         snote_ids.append(sn.id)
 

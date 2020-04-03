@@ -395,11 +395,17 @@ class SupervisedTrainer(NNTrainer):
                 input = input.transpose(0, 1)
                 target = target.transpose(0, 1)
 
+            # import pdb
+            # pdb.set_trace()
+
             output = self.model(input)
             loss = self.train_loss(output, target)
-
             losses.append(loss.item())
-            bar.set_description("epoch: {}/{}".format(epoch, self.epochs))
+            bar.set_description("epoch: {}/{} loss: {:.2f}".format(epoch + 1, self.epochs, losses[-1]))
+
+            if np.isnan(losses[-1]):
+                import pdb
+                pdb.set_trace()
 
             self.optimizer.zero_grad()
             loss.backward()
