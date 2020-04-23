@@ -96,13 +96,45 @@ def sanitize_performed_part(ppart):
     """Avoid negative durations in notes.
 
     """
-    for n in ppart.notes:
+
+    note_messages = []
+    for i, n in enumerate(ppart.notes):
 
         if n['note_off'] < n['note_on']:
             n['note_off'] = n['note_on']
 
         if n['sound_off'] < n['note_off']:
             n['sound_off'] = n['note_off']
+
+        note_messages += [(n['note_on'], 1, i),
+                          (n['sound_off'], 0, i)]
+
+    note_messages = note_messages
+    note_messages.sort(key=lambda x: x[0])
+
+    active_notes = {}
+    eps = 1e-4
+    for t, mt, i in note_messages:
+        note = ppart.notes[i]
+        pitch = note['midi_pitch']
+
+        if mt == 1:
+            if pitch in active_notes:
+                # get previous sounding note
+                prev_sounding_note = ppart.notes[active_notes[pitch]]
+                # adjust sound off of the note
+                prev_sounding_note['sound_off'] = t - eps
+
+            # update current sounding note
+            active_notes[pitch] = i
+
+        else:
+            # import pdb
+            # pdb.set_trace()
+            if pitch in active_notes:
+                # If note off, remove note from active notes
+                del active_notes[pitch]
+
 
 def post_process_predictions(predictions, render_config=RENDER_CONFIG):
 

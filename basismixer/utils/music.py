@@ -2,8 +2,8 @@
 Music related utilities
 """
 import numpy as np
-
 from partitura import load_musicxml, load_score_midi, load_via_musescore
+import torch
 
 def load_score(score_fn):
     """
@@ -83,9 +83,15 @@ def get_unique_onset_idxs(onsets, eps=1e-6, return_unique_onsets=False):
 def notewise_to_onsetwise(notewise_inputs, unique_onset_idxs):
     """Agregate basis functions per onset
     """
-    onsetwise_inputs = np.zeros((len(unique_onset_idxs),
-                                 notewise_inputs.shape[1]),
-                                dtype=notewise_inputs.dtype)
+    if isinstance(notewise_inputs, np.ndarray):
+        
+        onsetwise_inputs = np.zeros((len(unique_onset_idxs),
+                                     notewise_inputs.shape[1]),
+                                    dtype=notewise_inputs.dtype)
+    elif isinstance(notewise_inputs, torch.Tensor):
+        onsetwise_inputs = torch.zeros((len(unique_onset_idxs),
+                                        notewise_inputs.shape[1]),
+                                       dtype=notewise_inputs.dtype)
 
     for i, uix in enumerate(unique_onset_idxs):
         onsetwise_inputs[i] = notewise_inputs[uix].mean(0)
@@ -96,7 +102,10 @@ def onsetwise_to_notewise(onsetwise_input, unique_onset_idxs):
     """Expand onsetwise predictions for each note
     """
     n_notes = sum([len(uix) for uix in unique_onset_idxs])
-    notewise_inputs = np.zeros(n_notes, dtype=onsetwise_input.dtype)
+    if isinstance(onsetwise_input, np.ndarray):
+        notewise_inputs = np.zeros(n_notes, dtype=onsetwise_input.dtype)
+    elif isinstance(onsetwise_input, torch.Tensor):
+        notewise_inputs = torch.zeros(n_notes, dtype=onsetwise_input.dtype)
     for i, uix in enumerate(unique_onset_idxs):
         notewise_inputs[uix] = onsetwise_input[[i]]
     return notewise_inputs

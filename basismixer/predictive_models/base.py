@@ -168,7 +168,13 @@ class PredictiveModel(ABC):
         self.requires_onset_info = requires_onset_info
 
         if self.requires_onset_info:
-            if 'onset' not in self.input_names:
+            # if 'onset' not in self.input_names or 'score_position' not in self.input_names:
+            #     raise ValueError('This model requires onset information as input')
+            if 'onset' in self.input_names:
+                self.onset_idx = self.input_names.index('onset')
+            elif 'score_position' in self.input_names:
+                self.onset_idx = self.input_names.index('score_position')
+            else:
                 raise ValueError('This model requires onset information as input')
 
     @abstractmethod
