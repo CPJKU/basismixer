@@ -4,6 +4,9 @@ Music related utilities
 import numpy as np
 from partitura import load_musicxml, load_score_midi, load_via_musescore
 import torch
+from partitura.score import Part
+
+from basismixer.utils import load_pyc_bz
 
 def load_score(score_fn):
     """
@@ -22,19 +25,30 @@ def load_score(score_fn):
         A score part.
     """
     part = None
+    # Load MusicXML
     try:
         return load_musicxml(score_fn, force_note_ids='keep')
     except:
         pass
+    # Load MIDI
     try:
-        return load_score_midi(score_fn)
+        return load_score_midi(score_fn, assign_note_ids=True)
     except:
         pass
+    # Load MuseScore
     try:
         return load_via_musescore(score_fn, force_note_ids='keep')
     except:
         pass
-
+    # Load a part in compressed pickle format
+    try:
+        part = load_pyc_bz(score_fn)
+        if isinstance(part, Part):
+            return part
+        else:
+            part = None
+    except:
+        pass
     if part is None:
         raise ValueError('The score is not in one of the supported formats')
 

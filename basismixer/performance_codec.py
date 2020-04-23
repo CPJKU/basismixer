@@ -91,7 +91,8 @@ class PerformanceCodec(object):
 
         # sort
         snote_dict = dict((n.id, n) for n in snotes)
-        snote_info = np.array([(snote_dict[i].midi_pitch, snote_dict[i].start.t, snote_dict[i].end_tied.t)
+        snote_info = np.array([(snote_dict[i].midi_pitch, snote_dict[i].start.t,
+                                snote_dict[i].start.t + snote_dict[i].duration_tied)
                                for i in snote_ids],
                               dtype=[('pitch', 'i4'), ('onset', 'f4'), ('offset', 'f4')])
         sort_idx = np.lexsort((snote_info['pitch'], snote_info['onset']))
@@ -175,7 +176,7 @@ def encode_articulation(score_durations, performed_durations,
         # Compute log articulation ratio
         articulation[idx] = np.log2(pd / (bp * sd))
 
-    articulation[np.where(np.isnan(articulation))] = 0
+    # articulation[np.where(np.isnan(articulation))] = 0
     if len(np.where(np.isnan(articulation))[0]) != 0:
         import pdb
         pdb.set_trace()
@@ -827,7 +828,7 @@ def to_matched_score(part, ppart, alignment):
     for i in sort_order:
 
         sn, n = note_pairs[i]
-        sn_on, sn_off = beat_map([sn.start.t, sn.end_tied.t])
+        sn_on, sn_off = beat_map([sn.start.t, sn.start.t + sn.duration_tied])
         sn_dur = sn_off - sn_on
         # hack for notes with negative durations
         n_dur = max(n['sound_off'] - n['note_on'], 60 / 200 * 0.25)
