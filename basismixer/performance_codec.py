@@ -45,6 +45,8 @@ class PerformanceCodec(object):
         ----------
         matched_score : structured array
             Performance matched to its score.
+        snote_ids : list
+            NoteID's of the matched notes in the performance.
         return_u_onset_idx : bool
             Return the indices of the unique score onsets
         """
