@@ -3,6 +3,7 @@
 import sys
 import logging
 import numpy as np
+import partitura.utils
 from scipy.interpolate import interp1d
 import types
 
@@ -144,8 +145,7 @@ def polynomial_pitch_basis(part):
 
     basis_names = ['pitch', 'pitch^2', 'pitch^3']
     max_pitch = 127
-    pitches = np.array(
-        [n.midi_pitch for n in part.notes_tied]).astype(np.float)
+    pitches = partitura.utils.ensure_notearray(part)["pitch"].astype(np.float)
     W = np.column_stack((pitches / max_pitch,
                          pitches**2 / max_pitch**2,
                          pitches**3 / max_pitch**3))
@@ -183,9 +183,7 @@ def onset_basis(part):
     """
     basis_names = ['onset', 'score_position']
 
-    onsets = np.array([n.start.t for n in part.notes_tied])
-    bm = part.beat_map
-    onsets_beat = bm(onsets)
+    onsets_beat = partitura.utils.ensure_notearray(part)["onset_beat"]
     rel_position = normalize(onsets_beat, method='minmax')
 
     W = np.column_stack((onsets_beat, rel_position))
@@ -211,11 +209,10 @@ def grace_basis(part):
 
     basis_names = ['grace_note', 'n_grace', 'grace_pos']
 
-    notes = part.notes_tied
+    notes = partitura.utils.ensure_notearray(part)
     W = np.zeros((len(notes), 3))
     for i, n in enumerate(notes):
-        grace = isinstance(n, score.GraceNote)
-        if grace:
+        if n["duration_beat"] == 0:
             n_grace = n.grace_seq_len
             W[i, 0] = 1
             W[i, 1] = n_grace
@@ -242,7 +239,7 @@ def loudness_direction_basis(part):
     
     """
 
-    onsets = np.array([n.start.t for n in part.notes_tied])
+    onsets = partitura.utils.ensure_notearray(part)["onset_div"]
     N = len(onsets)
 
     directions = list(part.iter_all(
@@ -285,7 +282,7 @@ def tempo_direction_basis(part):
     * adagio : directions like 'adagio', 'molto adagio'
 
     """
-    onsets = np.array([n.start.t for n in part.notes_tied])
+    onsets = partitura.utils.ensure_notearray(part)["onset_div"]
     N = len(onsets)
 
     directions = list(part.iter_all(
@@ -323,7 +320,7 @@ def tempo_direction_basis(part):
 def articulation_direction_basis(part):
     """
     """
-    onsets = np.array([n.start.t for n in part.notes_tied])
+    onsets = partitura.utils.ensure_notearray(part)["onset_div"]
     N = len(onsets)
 
     directions = list(part.iter_all(
@@ -426,7 +423,7 @@ def slur_basis(part):
 
     """
     names = ['slur_incr', 'slur_decr']
-    onsets = np.array([n.start.t for n in part.notes_tied])
+    onsets = partitura.utils.ensure_notearray(part)["onset_div"]
     slurs = part.iter_all(score.Slur)
     W = np.zeros((len(onsets), 2))
 
@@ -498,7 +495,7 @@ def fermata_basis(part):
 
     """
     names = ['fermata']
-    onsets = np.array([n.start.t for n in part.notes_tied])
+    onsets = partitura.utils.ensure_notearray(part)["onset_div"]
     W = np.zeros((len(onsets), 1))
     for ferm in part.iter_all(score.Fermata):
         W[onsets == ferm.start.t, 0] = 1
@@ -611,7 +608,7 @@ def time_signature_basis(part):
     a one hot encoding of number of beats and a one hot encoding of beat type
     """
 
-    notes = part.notes_tied
+    notes = partitura.utils.ensure_notearray(part)
     ts_map = part.time_signature_map
     possible_beats = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 'other']
     possible_beat_types = [1, 2, 4, 8, 16, 'other']
@@ -622,7 +619,7 @@ def time_signature_basis(part):
              ['time_signature_den_{0}'.format(b) for b in possible_beat_types])
     
     for i, n in enumerate(notes):
-        beats, beat_type = ts_map(n.start.t).astype(int)
+        beats, beat_type = ts_map(n["onset_div"]).astype(int)
 
         if beats in possible_beats:
             W_beats[i, beats - 1] = 1
@@ -637,6 +634,7 @@ def time_signature_basis(part):
     W = np.column_stack((W_beats, W_types))
 
     return W, names
+
 
 def vertical_neighbor_basis(part):
     """Vertical neighbor basis.
@@ -656,17 +654,16 @@ def vertical_neighbor_basis(part):
     names = ['n_total', 'n_above', 'n_below',
              'highest_pitch', 'lowest_pitch', 'pitch_range']
     # notes
-    notes = part.notes_tied
+    notes = partitura.utils.ensure_notearray(part)
 
     W = np.empty((len(notes), len(names)))
-    for i, n in enumerate(part.notes_tied):
-        neighbors = np.array([n.midi_pitch for n in
-                              n.start.starting_objects[score.Note]])
+    for i, n in enumerate(notes):
+        neighbors = notes[np.where(notes[onset_beat] == n["onset_beat"])]["pitch"]
         max_pitch = np.max(neighbors)
         min_pitch = np.min(neighbors)
-        W[i, 0] = len(neighbors)
-        W[i, 1] = np.sum(neighbors > n.midi_pitch)
-        W[i, 2] = np.sum(neighbors < n.midi_pitch)
+        W[i, 0] = len(neighbors) - 1
+        W[i, 1] = np.sum(neighbors > n["pitch"])
+        W[i, 2] = np.sum(neighbors < n["pitch"])
         W[i, 3] = max_pitch
         W[i, 4] = min_pitch
         W[i, 5] = max_pitch - min_pitch
