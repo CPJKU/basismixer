@@ -659,7 +659,7 @@ def vertical_neighbor_basis(part):
 
     W = np.empty((len(notes), len(names)))
     for i, n in enumerate(notes):
-        neighbors = notes[np.where(notes[onset_beat] == n["onset_beat"])]["pitch"]
+        neighbors = notes[np.where(notes["onset_beat"] == n["onset_beat"])]["pitch"]
         max_pitch = np.max(neighbors)
         min_pitch = np.min(neighbors)
         W[i, 0] = len(neighbors) - 1
