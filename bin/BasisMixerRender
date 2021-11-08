@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-This program generates an expressive performance of an input music score (in any 
+This program generates an expressive performance of an input music score (in any
 format supported by the Partitura package) using a (trained) predictive model.
 
 TODO
@@ -12,7 +12,6 @@ import argparse
 import json
 import logging
 import os
-import subprocess
 
 
 import numpy as np
@@ -53,7 +52,7 @@ def load_model(model_config, default_values=DEFAULT_VALUES):
         Default values for the parameters not included in the trained model(s) (e.g., the models
         might just be predicting velocity, and the rest of the parameters (beat_period, timing, etc.)
         will be set to these parameters.
-    
+
     Returns
     -------
     full_model : basismixer.predictive_models.FullPredictiveModel
@@ -92,7 +91,7 @@ def load_model(model_config, default_values=DEFAULT_VALUES):
                                      default_values=def_values)
     # Set of expressive parameters not included in the predicted models
     not_in_model_names = set(all_output_names).difference(output_names)
-    
+
     LOGGER.info('Trained models include the following parameters:\n'
                 + '\n'.join(output_names) + '\n\n'
                 'The following parameters will use default values:\n'+
@@ -113,7 +112,7 @@ def compute_basis_from_score(score_fn, input_names):
     input_names : list
         List of input basis functions to extract score features. See `basismixer.basisfunctions`
         for the full list of functions supported
-    
+
     Returns
     -------
     basis : np.ndarray
@@ -132,7 +131,7 @@ def compute_basis_from_score(score_fn, input_names):
     # TODO: perhaps give grace notes a temporal order besides just expanding the duration?
     # expand_grace_notes(part)
     # part = unfold_part_maximal(part)
-    
+
     # Compute basis functions
     _basis, bf_names = make_basis(part, list(set([bf.split('.')[0] for bf in input_names])))
     basis = np.zeros((len(_basis), len(input_names)))
@@ -150,7 +149,7 @@ def compute_basis_from_score(score_fn, input_names):
 def predict(model_config, score_fn, default_values=DEFAULT_VALUES):
     """
     Main method for predicting a performance.
-    
+
     Parameters
     ----------
      model_config : iterable
@@ -225,8 +224,8 @@ if __name__ == '__main__':
     if args.render_config is None:
         render_config = RENDER_CONFIG
     else:
-        render_config = json.load(open(rendering_config))
-        
+        render_config = json.load(open(args.render_config))
+
     # Predict performance
     preds, model, part = predict(model_config=model_config,
                                  score_fn=args.score_fn,
@@ -243,9 +242,9 @@ if __name__ == '__main__':
     if args.save_match:
         predicted_ppart, alignment = predicted_ppart
 
-    # Sanitize part 
+    # Sanitize part
     sanitize_performed_part(predicted_ppart)
-    
+
     # Save MIDI file
     save_performance_midi(predicted_ppart, args.midi_fn)
 
@@ -256,5 +255,3 @@ if __name__ == '__main__':
                    out=args.midi_fn.replace('.mid', '.match'),
                    piece=os.path.basename(args.score_fn),
                    performer='Basis Mixer')
-
-    

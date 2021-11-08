@@ -11,12 +11,12 @@ from setuptools import find_packages, setup, Command
 # Package meta-data.
 NAME = 'basismixer'
 DESCRIPTION = 'A framework for computational modeling of musical expression'
-KEYWORDS = 'music'
+KEYWORDS = 'music expression performance midi'
 URL = 'https://github.com/OFAI/basismixer'
 EMAIL = ''
 AUTHOR = 'Carlos Cancino-Chacón, Maarten Grachten'
 REQUIRES_PYTHON = '>=3.5'
-VERSION = '0.1.0'
+VERSION = '0.1.1'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
@@ -36,6 +36,9 @@ EXTRAS = {
 # Except, perhaps the License and Trove Classifiers!
 # If you do change the License, remember to change the Trove Classifier for that!
 
+SCRIPTS = [
+    os.path.join("bin", "BasisMixerRender"),
+]
 here = os.path.abspath(os.path.dirname(__file__))
 
 # Import the README and use it as the long-description.
@@ -72,6 +75,7 @@ setup(
                                  ]},
     install_requires=REQUIRED,
     extras_require=EXTRAS,
+    scripts=SCRIPTS,
     include_package_data=True,
     license='GPLv3',
     classifiers=[
