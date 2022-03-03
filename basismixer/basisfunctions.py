@@ -215,6 +215,8 @@ def grace_basis(part):
     for i, n in enumerate(notes):
         if n["duration_beat"] == 0:
             n_grace = np.where((notes["onset_beat"] == n["onset_beat"]) & (notes["duration_beat"]==0))[0].shape[0]
+            # or
+            # n_grace = np.nonzero(ensure_notearray(part, include_grace_notes=True)["is_grace"])
             W[i, 0] = 1
             W[i, 1] = n_grace
             # W[i, 2] = n_grace - sum(1 for _ in n.iter_grace_seq()) + 1
