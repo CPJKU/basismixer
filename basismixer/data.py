@@ -4,6 +4,7 @@ import logging
 import os
 
 import numpy as np
+import partitura.musicanalysis
 from torch.utils.data import Dataset, ConcatDataset
 
 from partitura import load_musicxml, load_match
@@ -106,7 +107,9 @@ def make_datasets(model_specs, mxml_folder, match_folder, pieces=None,
             expand_grace_notes(part)
 
         # compute the basis functions
-        basis, bf_names = make_basis(part, all_basis_functions)
+        #todo: here
+        basis, bf_names = partitura.musicanalysis.make_note_feats(part, list(all_basis_functions))#todo: ask manos if behaves as intended when wrong function name is passed
+        #basis, bf_names = make_basis(part, all_basis_functions)
 
         # map the basis names returned for this piece to their global
         # indices
