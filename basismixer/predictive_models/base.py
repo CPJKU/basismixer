@@ -259,8 +259,7 @@ class NNModel(nn.Module, PredictiveModel):
                                  input_type=input_type,
                                  requires_onset_info=requires_onset_info)
         self.dtype = dtype
-        self.device = device if device is not None else torch.device('cpu')
-        self.to(self.device)
+        self.to(device)
         self.register_buffer('in_mean', torch.zeros(len(input_names)))
         self.register_buffer('in_std', torch.ones(len(input_names)))
         self.register_buffer('out_mean', torch.zeros(len(output_names)))
@@ -275,10 +274,9 @@ class NNModel(nn.Module, PredictiveModel):
         self._dtype = dtype
         self.type(dtype)
 
-    def to(self, *args, **kwargs):
-        result = super().to(*args, **kwargs)
+    @property
+    def device(self):
         try:
-            self.device = next(result.parameters()).device
+            return next(self.parameters()).device
         except StopIteration:
-            pass# needn't update device if we have no params
-        return result
+            return None# needn't update device if we have no params
