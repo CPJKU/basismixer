@@ -133,7 +133,7 @@ def make_basis(part, basis_functions):
     basis_names = [n for ns in _names for n in ns]
     return basis_data, basis_names
 
-
+# todo: cut?
 def polynomial_pitch_basis(part):
     """Polynomial pitch basis.
 
@@ -728,7 +728,7 @@ def normalize(data, method='minmax'):
     elif method == 'tanh_unity':
         return np.tanh(data) / np.tanh(1)
 
-
+## todo: cut?!
 # from extra.utils.data_utils import smooth
 # from extra.data_handling.sparse_feature_extraction import (
 #     scorepart_to_notes,

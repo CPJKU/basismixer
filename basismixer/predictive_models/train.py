@@ -89,27 +89,22 @@ class NNTrainer(ABC):
         bar = tqdm(enumerate(self.train_dataloader), total=len(self.train_dataloader))
         bar.set_description("computing stats")
 
-        # for b_idx, (input, target) in enumerate(self.train_dataloader):
         for b_idx, (input, target) in bar:
-
-            if self.device is not None:
-                input = input.to(self.device).type(self.dtype)
-                target = target.to(self.device).type(self.dtype)
 
             in_means.append(input.mean((0, 1)).unsqueeze(0))
             in_vars.append(input.var((0, 1)).unsqueeze(0))
             in_sizes.append(torch.prod(torch.tensor(input.shape[:-1])))
-            # all_data.append(input)
+
             out_means.append(target.mean((0, 1)).unsqueeze(0))
             out_vars.append(target.var((0, 1)).unsqueeze(0))
             out_sizes.append(torch.prod(torch.tensor(target.shape[:-1])))
 
-        in_means = torch.cat(in_means, dim=0)
-        in_vars = torch.cat(in_vars, dim=0)
+        in_means = torch.cat(in_means, dim=0).to(self.device).type(self.dtype)
+        in_vars = torch.cat(in_vars, dim=0).to(self.device).type(self.dtype)
         in_sizes = torch.tensor(in_sizes).to(self.device).type(self.dtype)
 
-        out_means = torch.cat(out_means, dim=0)
-        out_vars = torch.cat(out_vars, dim=0)
+        out_means = torch.cat(out_means, dim=0).to(self.device).type(self.dtype)
+        out_vars = torch.cat(out_vars, dim=0).to(self.device).type(self.dtype)
         out_sizes = torch.tensor(out_sizes).to(self.device).type(self.dtype)
 
         in_N = in_sizes.sum().to(self.device).type(self.dtype)

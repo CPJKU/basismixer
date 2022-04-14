@@ -3,10 +3,12 @@ name: basismixer
 channels:
   - defaults
   - pytorch
+  - nvidia
 
 dependencies:
+  - nvidia::cudatoolkit=11.3
   - python=3.7
-  - pytorch
+  - pytorch::pytorch
   - numpy
   - scipy
   - matplotlib
@@ -18,5 +20,5 @@ dependencies:
   - pip:
     - appdirs
     - soundfile
-    - git+https://github.com/OFAI/partitura.git@develop
-    - git+https://github.com/OFAI/basismixer.git@develop
+#    - git+https://github.com/OFAI/partitura.git@develop
+#    - git+https://github.com/OFAI/basismixer.git@develop
