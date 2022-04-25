@@ -79,7 +79,6 @@ def make_datasets(model_specs, root_folder, quirks=False, gracenotes='remove'):
         basis, bf_names = partitura.musicanalysis.make_note_feats(part, list(all_basis_functions))
 
 
-
         bf_idx = np.array([bf_idx_map.setdefault(name, len(bf_idx_map))
                            for i, name in enumerate(bf_names)])
 

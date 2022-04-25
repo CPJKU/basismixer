@@ -182,7 +182,7 @@ def load_alignment_from_ASAP(file):
         for line in f.readlines():
             fields = line.split("\t")
             if fields[0][0] == "n" and not fields[1].startswith("deletion"):
-                field0 = fields[0].split("-")[0] # todo: how to handle 'n123-x' when x > 1
+                field0 = fields[0]#.split("-")[0] # todo: how to handle 'n123-x' when x > 1, all quirk?
                 alignlist.append({"label": "match", "score_id": field0, "performance_id": fields[1]})
             #elif fields[0] == "insertion":
             #    alignlist.append({"label": "insertion", "performance_id": fields[1]})

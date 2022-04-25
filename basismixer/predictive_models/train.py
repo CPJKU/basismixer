@@ -85,11 +85,14 @@ class NNTrainer(ABC):
         out_vars = []
         out_sizes = []
 
+        feature_usages = np.zeros(self.train_dataloader.dataset[0][0].shape[1])
 
         bar = tqdm(enumerate(self.train_dataloader), total=len(self.train_dataloader))
         bar.set_description("computing stats")
 
         for b_idx, (input, target) in bar:
+
+            feature_usages += ((input.detach().numpy() != 0).sum(1) != 0).sum(0) #why tensor mem blowup?!!
 
             in_means.append(input.mean((0, 1)).unsqueeze(0))
             in_vars.append(input.var((0, 1)).unsqueeze(0))
@@ -99,6 +102,7 @@ class NNTrainer(ABC):
             out_vars.append(target.var((0, 1)).unsqueeze(0))
             out_sizes.append(torch.prod(torch.tensor(target.shape[:-1])))
 
+        feature_usages /= len(self.train_dataloader.dataset)
         in_means = torch.cat(in_means, dim=0).to(self.device).type(self.dtype)
         in_vars = torch.cat(in_vars, dim=0).to(self.device).type(self.dtype)
         in_sizes = torch.tensor(in_sizes).to(self.device).type(self.dtype)
@@ -415,6 +419,7 @@ class SupervisedTrainer(NNTrainer):
 
         self.model.eval()
         losses = []
+        debug_loss = torch.nn.MSELoss(reduction='none')
         with torch.no_grad():
             for input, target in self.valid_dataloader:
 
