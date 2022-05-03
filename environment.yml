@@ -1,12 +1,12 @@
 name: basismixer
 
 channels:
-  - defaults
+  - conda-forge
   - pytorch
   - nvidia
 
 dependencies:
-  - nvidia::cudatoolkit=11.3
+  - nvidia::cudatoolkit
   - python=3.7
   - pytorch::pytorch
   - numpy

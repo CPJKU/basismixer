@@ -103,6 +103,8 @@ class NNTrainer(ABC):
             out_sizes.append(torch.prod(torch.tensor(target.shape[:-1])))
 
         feature_usages /= len(self.train_dataloader.dataset)
+        print("feature usages:", feature_usages)
+        self.feature_usages = feature_usages
         in_means = torch.cat(in_means, dim=0).to(self.device).type(self.dtype)
         in_vars = torch.cat(in_vars, dim=0).to(self.device).type(self.dtype)
         in_sizes = torch.tensor(in_sizes).to(self.device).type(self.dtype)

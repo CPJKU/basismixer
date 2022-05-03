@@ -19,6 +19,97 @@ from basismixer.performance_codec import get_performance_codec
 LOGGER = logging.getLogger(__name__)
 
 
+def get_pieces(model_specs, mxml_folder, match_folder, pieces=None,
+                  quirks=False, gracenotes='remove', TRANSLATE_FEATURES=None):
+    all_targets = list(set([n for model_spec in model_specs
+                            for n in model_spec['parameter_names']]))
+
+    perf_codec = get_performance_codec(all_targets)
+
+    # different subsets of basis functions may be returned for different
+    # pieces. idx_map maintains a global mapping from basis names to
+    # indices into the columns of the model inputs.
+    bf_idx_map = {}
+    # a list to gather the data from which the dataset will be built.
+    data = []
+
+    all_basis_functions = set([n for model_spec in model_specs
+                               for n in model_spec['basis_functions']])
+    folders = dict(mxml=mxml_folder, match=match_folder)
+
+    # by_prefix should be used when there are multiple performances
+    # (assuming the matchfile names consist of the piece name + a
+    # suffix). When there is only a single performance per piece (like for
+    # magaloff/zeilinger), we assume musicxml and matchfile have the same
+    # name (up to the file extension), so we switch by_prefix of in the
+    # file pairing. In that way files are only paired if they are have
+    # identical names (up to the extension).
+    for piece, files in pair_files(folders, by_prefix=not quirks).items():
+        if pieces is not None and piece not in pieces:
+            continue
+        # load the score
+        xml_fn = files['mxml'].pop()
+        LOGGER.info('Processing {}'.format(xml_fn))
+        part = load_musicxml(xml_fn)
+        bm = part.beat_map
+
+        # get indices of the unique onsets
+        if gracenotes == 'remove':
+            # Remove grace notes
+            remove_grace_notes(part)
+        else:
+            # expand grace note durations (necessary for correct computation of
+            # targets)
+            expand_grace_notes(part)
+
+        # compute the basis functions
+        # todo: here
+        basis, bf_names = partitura.musicanalysis.make_note_feats(part, list(
+            all_basis_functions))  # todo: ask manos if behaves as intended when wrong function name is passed
+        # basis, bf_names = make_basis(part, all_basis_functions)
+
+        if TRANSLATE_FEATURES:
+            bf_names = [TRANSLATE_FEATURES[f] if f in TRANSLATE_FEATURES else f for f in bf_names]
+
+        # map the basis names returned for this piece to their global
+        # indices
+        bf_idx = np.array([bf_idx_map.setdefault(name, len(bf_idx_map))
+                           for i, name in enumerate(bf_names)])
+
+        # a dictionary from note id to index. We need this to select the
+        # subset of rows in the `basis` array that have a matching entry in
+        # the targets.
+        nid_dict = dict((n.id, i) for i, n in enumerate(part.notes_tied))
+
+        for match in files['match']:
+
+            # if not '_p01' in match:
+            #     continue
+            name = os.path.splitext(os.path.basename(match))[0]
+
+            LOGGER.info('Processing {}'.format(match))
+
+            # load the performed part and the alignment from the match file
+            ppart, alignment = load_match(match, first_note_at_zero=True)
+
+            if quirks:
+                for n in alignment:
+                    if n['label'] == 'match':
+                        n['score_id'] = n['score_id'].split('-')[0]
+
+            # compute the targets
+            targets, snote_ids = perf_codec.encode(part, ppart, alignment)
+
+            matched_subset_idxs = np.array([nid_dict[nid] for nid in snote_ids])
+            basis_matched = basis[matched_subset_idxs]
+
+            score_onsets = bm([n.start.t for n in part.notes_tied])[matched_subset_idxs]
+            unique_onset_idxs = get_unique_onset_idxs(score_onsets)
+
+            data.append((basis_matched, bf_idx, targets, unique_onset_idxs, name))
+    return data, bf_idx_map
+
+
 def make_datasets(model_specs, mxml_folder, match_folder, pieces=None,
                   quirks=False, gracenotes='remove'):
     """Create an dataset for each in a list of model specifications.
@@ -65,90 +156,7 @@ def make_datasets(model_specs, mxml_folder, match_folder, pieces=None,
     
     """
 
-    all_targets = list(set([n for model_spec in model_specs
-                            for n in model_spec['parameter_names']]))
-
-    perf_codec = get_performance_codec(all_targets)
-
-    # different subsets of basis functions may be returned for different
-    # pieces. idx_map maintains a global mapping from basis names to
-    # indices into the columns of the model inputs.
-    bf_idx_map = {}
-    # a list to gather the data from which the dataset will be built.
-    data = []
-
-    all_basis_functions = set([n for model_spec in model_specs
-                               for n in model_spec['basis_functions']])
-    folders = dict(mxml=mxml_folder, match=match_folder)
-
-    # by_prefix should be used when there are multiple performances
-    # (assuming the matchfile names consist of the piece name + a
-    # suffix). When there is only a single performance per piece (like for
-    # magaloff/zeilinger), we assume musicxml and matchfile have the same
-    # name (up to the file extension), so we switch by_prefix of in the
-    # file pairing. In that way files are only paired if they are have
-    # identical names (up to the extension).
-    for piece, files in pair_files(folders, by_prefix=not quirks).items():
-        if pieces is not None and piece not in pieces:
-            continue
-        # load the score
-        xml_fn = files['mxml'].pop()
-        LOGGER.info('Processing {}'.format(xml_fn))
-        part = load_musicxml(xml_fn)
-        bm = part.beat_map
-
-        # get indices of the unique onsets
-        if gracenotes == 'remove':
-            # Remove grace notes
-            remove_grace_notes(part)
-        else:
-            # expand grace note durations (necessary for correct computation of
-            # targets)
-            expand_grace_notes(part)
-
-        # compute the basis functions
-        #todo: here
-        basis, bf_names = partitura.musicanalysis.make_note_feats(part, list(all_basis_functions))#todo: ask manos if behaves as intended when wrong function name is passed
-        #basis, bf_names = make_basis(part, all_basis_functions)
-
-        # map the basis names returned for this piece to their global
-        # indices
-        bf_idx = np.array([bf_idx_map.setdefault(name, len(bf_idx_map))
-                           for i, name in enumerate(bf_names)])
-
-
-        # a dictionary from note id to index. We need this to select the
-        # subset of rows in the `basis` array that have a matching entry in
-        # the targets.
-        nid_dict = dict((n.id, i) for i, n in enumerate(part.notes_tied))
-
-        for match in files['match']:
-
-            # if not '_p01' in match:
-            #     continue
-            name = os.path.splitext(os.path.basename(match))[0]
-            
-            LOGGER.info('Processing {}'.format(match))
-
-            # load the performed part and the alignment from the match file
-            ppart, alignment = load_match(match, first_note_at_zero=True)
-
-            if quirks:
-                for n in alignment:
-                    if n['label'] == 'match':
-                        n['score_id'] = n['score_id'].split('-')[0]
-
-            # compute the targets
-            targets, snote_ids = perf_codec.encode(part, ppart, alignment)
-    
-
-            matched_subset_idxs = np.array([nid_dict[nid] for nid in snote_ids])
-            basis_matched = basis[matched_subset_idxs]
-
-            score_onsets = bm([n.start.t for n in part.notes_tied])[matched_subset_idxs]
-            unique_onset_idxs = get_unique_onset_idxs(score_onsets)
-
-            data.append((basis_matched, bf_idx, targets, unique_onset_idxs, name))
+    data, bf_idx_map = get_pieces(model_specs, mxml_folder, match_folder, pieces, quirks, gracenotes)
     
     return piece_data_to_datasets(data, bf_idx_map, model_specs)
 

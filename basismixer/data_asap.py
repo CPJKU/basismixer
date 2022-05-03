@@ -21,6 +21,8 @@ from pathlib import Path
 LOGGER = logging.getLogger(__name__)
 
 from partitura.score import GraceNote, Note
+from .data import get_pieces
+
 
 def remove_grace_notes(part):
     """Remove all grace notes from a timeline.
@@ -39,7 +41,21 @@ def remove_grace_notes(part):
                n.tie_next = None
         part.remove(gn)
 
-def make_datasets(model_specs, root_folder, quirks=False, gracenotes='remove'):
+
+TRANSLATE_FEATURES = {
+    "loudness_direction_feature.piano": "loudness_direction_feature.p",
+    "loudness_direction_feature.forte": "loudness_direction_feature.f",
+    "loudness_direction_feature.fz": "loudness_direction_feature.sf",
+    "loudness_direction_feature.sfz": "loudness_direction_feature.sf",
+    "loudness_direction_feature.sffz": "loudness_direction_feature.sf",
+    "loudness_direction_feature.fp": "loudness_direction_feature.sf",
+    "loudness_direction_feature.sfp": "loudness_direction_feature.sf",
+    "loudness_direction_feature.rf": "loudness_direction_feature.sf",
+    "loudness_direction_feature.rfz": "loudness_direction_feature.sf"
+}
+
+
+def make_datasets(model_specs, root_folder, quirks=False, gracenotes='remove', valid_set_params=None):
     all_targets = list(set([n for model_spec in model_specs
                             for n in model_spec['parameter_names']]))
 
@@ -60,7 +76,7 @@ def make_datasets(model_specs, root_folder, quirks=False, gracenotes='remove'):
         print(f"{i}/{len(pieces)}")
         i += 1
 
-        name = "/".join(str(piece).split("/")[-3:-1])
+        name = str(piece).split(root_folder + '/')[1].split('/xml_score.musicxml')[0]
         LOGGER.info('Processing {}'.format(piece))
 
         part = load_musicxml(piece)
@@ -78,6 +94,7 @@ def make_datasets(model_specs, root_folder, quirks=False, gracenotes='remove'):
             expand_grace_notes(part)
         basis, bf_names = partitura.musicanalysis.make_note_feats(part, list(all_basis_functions))
 
+        bf_names = [TRANSLATE_FEATURES[f] if f in TRANSLATE_FEATURES else f for f in bf_names]
 
         bf_idx = np.array([bf_idx_map.setdefault(name, len(bf_idx_map))
                            for i, name in enumerate(bf_names)])
@@ -106,6 +123,20 @@ def make_datasets(model_specs, root_folder, quirks=False, gracenotes='remove'):
 
             data.append((basis_matched, bf_idx, targets, unique_onset_idxs, name))
 
+    if valid_set_params:
+        train_idx = len(data)
+        data_4x22, bf_idxs_4x22 = get_pieces(*valid_set_params, TRANSLATE_FEATURES=TRANSLATE_FEATURES)
+
+        for key, value in bf_idxs_4x22.items():
+            idx = bf_idx_map.setdefault(key, len(bf_idx_map))
+            for _, bf_idx, _, _, _ in data_4x22:
+                bf_idx[bf_idx == value] = -idx  # prevent overwriting
+
+        for _, bf_idx, _, _, _ in data_4x22:
+            bf_idx[bf_idx < 0] *= -1
+        data.extend(data_4x22)
+
+        return piece_data_to_datasets(data, bf_idx_map, model_specs), train_idx
     return piece_data_to_datasets(data, bf_idx_map, model_specs)
 
 

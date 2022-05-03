@@ -4,31 +4,33 @@ from basismixer import make_datasets
 from helper import init_dataset, data
 from basismixer.utils import load_pyc_bz, save_pyc_bz
 from helper.predictions import (construct_model, setup_output_directory, train_model,
-                                split_datasets)
+                                split_datasets, split_datasets_by_piece)
 import torch.nn as nn
 
 
 out_dir = setup_output_directory("runs")
 
 basis_features = ['polynomial_pitch_feature',
-                          'loudness_direction_feature',
-                          'tempo_direction_feature',
-                          'articulation_feature',
-                          'duration_feature',
-                          'slur_feature',
-                          'fermata_feature',
-                          'grace_feature',
-                          'metrical_feature']
+                  'duration_feature',
+                          #'loudness_direction_feature',
+                          #'tempo_direction_feature',
+                          #'articulation_feature',
+                          #'slur_feature',
+                          #'fermata_feature',
+                          #'grace_feature',
+                          #'metrical_feature'
+                  ]
 
 basis_functions = ['polynomial_pitch_basis',
-                          'loudness_direction_basis',
-                          'tempo_direction_basis',
-                          'articulation_basis',
-                          'duration_basis',
-                          'slur_basis',
-                          'fermata_basis',
-                          'grace_basis',
-                          'metrical_basis']
+                   'duration_basis',
+                          #'loudness_direction_basis',
+                          #'tempo_direction_basis',
+                          #'articulation_basis',
+                          #'slur_basis',
+                          #'fermata_basis',
+                          #'grace_basis',
+                          #'metrical_basis'
+                   ]
 
 model_config = [
     dict(onsetwise=True,
@@ -58,10 +60,11 @@ matchfolder = os.path.join(data.DATASET_DIR, 'match')
 
 dataset_fn = os.path.join(data.DATASET_DIR, 'vienna_4x22.pyc.bz')
 
-if dataset_fn is not None and os.path.exists(dataset_fn):
+IGNORE_CACHE = True
+
+if dataset_fn is not None and os.path.exists(dataset_fn) and not IGNORE_CACHE:
     datasets = load_pyc_bz(dataset_fn)
 else:
-#if True:# comment out
     datasets = make_datasets(model_config,
                              xmlfolder,
                              matchfolder)
@@ -74,7 +77,7 @@ for (dataset, in_names, out_names), config in zip(datasets, model_config):
     # Build model
     model, model_out_dir = construct_model(config, in_names, out_names, out_dir)
     # Split datasets
-    train_set, valid_set, test_set = split_datasets(dataset)
+    train_set, valid_set, test_set = split_datasets_by_piece(dataset)
     # Train Model
     train_model(model, train_set, valid_set, config, model_out_dir)
 
