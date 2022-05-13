@@ -12,7 +12,7 @@ import partitura
 
 import basismixer
 from basismixer.utils import to_memmap
-import basismixer.basisfunctions as bf
+from partitura.musicanalysis import make_note_feats
 
 def main():
     parser = argparse.ArgumentParser(description="Create basis functions for a MusicXML file")
@@ -29,7 +29,7 @@ def main():
     
     part = partitura.load_musicxml(args.musicxml)
     print(part.pretty())
-    basis, names = bf.make_basis(part, args.basis)
+    basis, names = make_note_feats(part, args.basis)
     # plot
     onsets = None # np.array([n.start.t for n in part.notes_tied])
     plot_basis(basis, names, '/tmp/out.png', onsets, title=part.part_name)

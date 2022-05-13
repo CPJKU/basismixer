@@ -27,19 +27,19 @@ LOGGER = logging.getLogger(__name__)
 
 CONFIG = [
     dict(onsetwise=False,
-         basis_functions=['polynomial_pitch_basis',
-                          'loudness_direction_basis',
-                          'tempo_direction_basis',
-                          'articulation_basis',
-                          'duration_basis',
+         basis_functions=['polynomial_pitch_feature',
+                          'loudness_direction_feature',
+                          'tempo_direction_feature',
+                          'articulation_feature',
+                          'duration_feature',
                           # my_basis,
-                          'grace_basis',
-                          'slur_basis',
-                          'fermata_basis',
-                          # 'metrical_basis'
-                          'metrical_strength_basis',
-                          'time_signature_basis',
-                          'relative_score_position_basis'
+                          'grace_feature',
+                          'slur_feature',
+                          'fermata_feature',
+                          # 'metrical_feature'
+                          'metrical_strength_feature',
+                          'time_signature_feature',
+                          'relative_score_position_feature'
          ],
          parameter_names=['velocity_dev', 'timing', 'articulation_log'],
          seq_len=1,
@@ -54,18 +54,18 @@ CONFIG = [
          )
     ),
     dict(onsetwise=True,
-         basis_functions=['polynomial_pitch_basis',
-                          'loudness_direction_basis',
-                          'tempo_direction_basis',
-                          'articulation_basis',
-                          'duration_basis',
-                          'slur_basis',
-                          'grace_basis',
-                          'fermata_basis',
-                          # 'metrical_basis'
-                          'metrical_strength_basis',
-                          'time_signature_basis',
-                          'relative_score_position_basis'
+         basis_functions=['polynomial_pitch_feature',
+                          'loudness_direction_feature',
+                          'tempo_direction_feature',
+                          'articulation_feature',
+                          'duration_feature',
+                          'slur_feature',
+                          'grace_feature',
+                          'fermata_feature',
+                          # 'metrical_feature'
+                          'metrical_strength_feature',
+                          'time_signature_feature',
+                          'relative_score_position_feature'
          ],
          parameter_names=['velocity_trend', 'beat_period_standardized',
                           'beat_period_mean', 'beat_period_std'],

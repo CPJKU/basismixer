@@ -8,7 +8,7 @@ from torch.utils.data import Dataset, ConcatDataset
 
 from partitura import load_musicxml, load_match
 from partitura.score import expand_grace_notes, remove_grace_notes
-from basismixer.basisfunctions import make_basis
+from partitura.musicanalysis import make_note_feats
 from basismixer.utils import (pair_files,
                               get_unique_onset_idxs,
                               notewise_to_onsetwise)
@@ -76,8 +76,8 @@ def make_datasets(model_specs, mxml_folder, match_folder, pieces=None,
     # a list to gather the data from which the dataset will be built.
     data = []
 
-    all_basis_functions = set([n for model_spec in model_specs
-                               for n in model_spec['basis_functions']])
+    all_basis_functions = list(set([n for model_spec in model_specs
+                               for n in model_spec['basis_functions']]))
     folders = dict(mxml=mxml_folder, match=match_folder)
 
     # by_prefix should be used when there are multiple performances
@@ -106,7 +106,7 @@ def make_datasets(model_specs, mxml_folder, match_folder, pieces=None,
             expand_grace_notes(part)
 
         # compute the basis functions
-        basis, bf_names = make_basis(part, all_basis_functions)
+        basis, bf_names = make_note_feats(part, all_basis_functions)
 
         # map the basis names returned for this piece to their global
         # indices
