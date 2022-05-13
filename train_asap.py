@@ -54,7 +54,7 @@ model_config = [
     )
 ]
 
-DATASET_DIR = '/home/plassma/Desktop/JKU/CP/basismixer/asap-dataset' if os.getlogin() == 'plassma' else '../asap-dataset'
+DATASET_DIR = '/home/plassma/Desktop/JKU/CP/asap-dataset' if os.getlogin() == 'plassma' else '/home/matthiaspl/asap-dataset'
 
 
 def my_split_datasets(datasets, train_idx):
@@ -65,8 +65,13 @@ def my_split_datasets(datasets, train_idx):
             ConcatDataset(datasets[train_idx:]),
             ConcatDataset(datasets[train_idx:]))#todo: validation set!
 
+
 def MSE_bound(dataset, log=False):
     from partitura.utils import partition
+
+    if type(dataset) is ConcatDataset:
+        dataset = dataset.datasets
+
     by_piece = partition(lambda d:d.name, dataset)
     MSEs = []
     for name, pieces in by_piece.items():
@@ -114,6 +119,10 @@ for (dataset, in_names, out_names), config in zip(datasets, model_config):
     model, model_out_dir = construct_model(config, in_names, out_names, out_dir)
     # Split datasets
     train_set, valid_set, test_set = split_datasets_by_piece(dataset)#my_split_datasets(dataset, train_idx)
+    print("train set: ", MSE_bound(train_set, log=False))
+
+    print("test set: ", MSE_bound(test_set, log=False))
+
     # Train Model
     train_model(model, train_set, valid_set, config, model_out_dir)
 

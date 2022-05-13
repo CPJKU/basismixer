@@ -179,15 +179,17 @@ def load_alignment_from_ASAP(file):
     """
     alignlist = list()
     with open(file, 'r') as f:
-        for line in f.readlines():
+        for line in f.readlines()[1:]:  # skip header
             fields = line.split("\t")
             if fields[0][0] == "n" and not fields[1].startswith("deletion"):
                 field0 = fields[0]#.split("-")[0] # todo: how to handle 'n123-x' when x > 1, all quirk?
                 alignlist.append({"label": "match", "score_id": field0, "performance_id": fields[1]})
-            #elif fields[0] == "insertion":
-            #    alignlist.append({"label": "insertion", "performance_id": fields[1]})
-            #elif fields[0][0] == "n" and fields[1].startswith("deletion"):
-            #    field0 = fields[0].split("-")[0]
-            #    alignlist.append({"label": "deletion", "score_id": field0})
+            elif fields[0] == "insertion":
+                alignlist.append({"label": "insertion", "performance_id": fields[1]})
+            elif fields[0][0] == "n" and fields[1].startswith("deletion"):
+                field0 = fields[0]#.split("-")[0]
+                alignlist.append({"label": "deletion", "score_id": field0})
+            else:
+                raise Exception(f"Unknown alignment type: {fields[0]}")
 
     return alignlist

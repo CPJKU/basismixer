@@ -3,6 +3,8 @@
 import logging
 import os
 
+import warnings
+
 import numpy as np
 import partitura.musicanalysis
 from torch.utils.data import Dataset, ConcatDataset
@@ -56,88 +58,90 @@ TRANSLATE_FEATURES = {
 
 
 def make_datasets(model_specs, root_folder, quirks=False, gracenotes='remove', valid_set_params=None):
-    all_targets = list(set([n for model_spec in model_specs
-                            for n in model_spec['parameter_names']]))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        all_targets = list(set([n for model_spec in model_specs
+                                for n in model_spec['parameter_names']]))
 
-    perf_codec = get_performance_codec(all_targets)
+        perf_codec = get_performance_codec(all_targets)
 
-    bf_idx_map = {}
+        bf_idx_map = {}
 
-    data = []
+        data = []
 
-    all_basis_functions = set([n for model_spec in model_specs
-                               for n in model_spec['basis_functions']])
+        all_basis_functions = set([n for model_spec in model_specs
+                                   for n in model_spec['basis_functions']])
 
-    pieces = list(Path(root_folder).rglob("*/xml_score.musicxml"))
+        pieces = list(Path(root_folder).rglob("*/xml_score.musicxml"))
 
-    i = 0
-    for piece in pieces:
+        i = 0
+        for piece in pieces:
 
-        print(f"{i}/{len(pieces)}")
-        i += 1
+            print(f"{i}/{len(pieces)}")
+            i += 1
 
-        name = str(piece).split(root_folder + '/')[1].split('/xml_score.musicxml')[0]
-        LOGGER.info('Processing {}'.format(piece))
+            name = str(piece).split(root_folder + '/')[1].split('/xml_score.musicxml')[0]
+            LOGGER.info('Processing {}'.format(piece))
 
-        part = load_musicxml(piece)
-        part = partitura.score.merge_parts(part)
+            part = load_musicxml(piece)
+            part = partitura.score.merge_parts(part)
 
-        bm = part.beat_map
+            bm = part.beat_map
 
-        # get indices of the unique onsets
-        if gracenotes == 'remove':
-            # Remove grace notes
-            remove_grace_notes(part)
-        else:
-            # expand grace note durations (necessary for correct computation of
-            # targets)
-            expand_grace_notes(part)
-        basis, bf_names = partitura.musicanalysis.make_note_feats(part, list(all_basis_functions))
+            # get indices of the unique onsets
+            if gracenotes == 'remove':
+                # Remove grace notes
+                remove_grace_notes(part)
+            else:
+                # expand grace note durations (necessary for correct computation of
+                # targets)
+                expand_grace_notes(part)
+            basis, bf_names = partitura.musicanalysis.make_note_feats(part, list(all_basis_functions))
 
-        bf_names = [TRANSLATE_FEATURES[f] if f in TRANSLATE_FEATURES else f for f in bf_names]
+            bf_names = [TRANSLATE_FEATURES[f] if f in TRANSLATE_FEATURES else f for f in bf_names]
 
-        bf_idx = np.array([bf_idx_map.setdefault(name, len(bf_idx_map))
-                           for i, name in enumerate(bf_names)])
+            bf_idx = np.array([bf_idx_map.setdefault(name, len(bf_idx_map))
+                               for i, name in enumerate(bf_names)])
 
-        nid_dict = dict((n.id, i) for i, n in enumerate(part.notes_tied))
+            nid_dict = dict((n.id, i) for i, n in enumerate(part.notes_tied))
 
-        performances = list(Path(piece).parent.glob("*_note_alignments/note_alignment.tsv"))
+            performances = list(Path(piece).parent.glob("*_note_alignments/note_alignment.tsv"))
 
-        for performance in performances:
-            alignment = load_alignment_from_ASAP(performance)
-            ppart = partitura.load_performance_midi(str(performance).split("_note_alignments/")[0] + ".mid")#todo: can I load this from midi without loss?
+            for performance in performances:
+                alignment = load_alignment_from_ASAP(performance)
+                ppart = partitura.load_performance_midi(str(performance).split("_note_alignments/")[0] + ".mid")#todo: can I load this from midi without loss?
 
-            if quirks:
-                for n in alignment:
-                    if n['label'] == 'match':
-                        n['score_id'] = n['score_id'].split('-')[0]
+                if quirks:
+                    for n in alignment:
+                        if n['label'] == 'match':
+                            n['score_id'] = n['score_id'].split('-')[0]
 
-            # compute the targets
-            targets, snote_ids = perf_codec.encode(part, ppart, alignment)
+                # compute the targets
+                targets, snote_ids = perf_codec.encode(part, ppart, alignment)
 
-            matched_subset_idxs = np.array([nid_dict[nid] for nid in snote_ids])
-            basis_matched = basis[matched_subset_idxs]
+                matched_subset_idxs = np.array([nid_dict[nid] for nid in snote_ids])
+                basis_matched = basis[matched_subset_idxs]
 
-            score_onsets = bm([n.start.t for n in part.notes_tied])[matched_subset_idxs]
-            unique_onset_idxs = get_unique_onset_idxs(score_onsets)
+                score_onsets = bm([n.start.t for n in part.notes_tied])[matched_subset_idxs]
+                unique_onset_idxs = get_unique_onset_idxs(score_onsets)
 
-            data.append((basis_matched, bf_idx, targets, unique_onset_idxs, name))
+                data.append((basis_matched, bf_idx, targets, unique_onset_idxs, name))
 
-    if valid_set_params:
-        train_idx = len(data)
-        data_4x22, bf_idxs_4x22 = get_pieces(*valid_set_params, TRANSLATE_FEATURES=TRANSLATE_FEATURES)
+        if valid_set_params:
+            train_idx = len(data)
+            data_4x22, bf_idxs_4x22 = get_pieces(*valid_set_params, TRANSLATE_FEATURES=TRANSLATE_FEATURES)
 
-        for key, value in bf_idxs_4x22.items():
-            idx = bf_idx_map.setdefault(key, len(bf_idx_map))
+            for key, value in bf_idxs_4x22.items():
+                idx = bf_idx_map.setdefault(key, len(bf_idx_map))
+                for _, bf_idx, _, _, _ in data_4x22:
+                    bf_idx[bf_idx == value] = -idx  # prevent overwriting
+
             for _, bf_idx, _, _, _ in data_4x22:
-                bf_idx[bf_idx == value] = -idx  # prevent overwriting
+                bf_idx[bf_idx < 0] *= -1
+            data.extend(data_4x22)
 
-        for _, bf_idx, _, _, _ in data_4x22:
-            bf_idx[bf_idx < 0] *= -1
-        data.extend(data_4x22)
-
-        return piece_data_to_datasets(data, bf_idx_map, model_specs), train_idx
-    return piece_data_to_datasets(data, bf_idx_map, model_specs)
+            return piece_data_to_datasets(data, bf_idx_map, model_specs), train_idx
+        return piece_data_to_datasets(data, bf_idx_map, model_specs)
 
 
 def performed_part_from_alignment(alignment, pedal_threshold=64, first_note_at_zero=False):#todo: delete?
