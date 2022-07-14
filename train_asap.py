@@ -7,7 +7,7 @@ from torch.utils.data import ConcatDataset
 from basismixer.data_asap import make_datasets
 from helper import init_dataset, data
 from basismixer.utils import load_pyc_bz, save_pyc_bz
-from helper.predictions import (construct_model, setup_output_directory, train_model, split_datasets_by_piece, split_datasets)
+from helper.predictions import (construct_model, setup_output_directory, train_model, split_datasets_by_piece, robust_split_datasets_by_piece, split_datasets)
 import torch.nn as nn
 
 out_dir = setup_output_directory("runs")
@@ -54,7 +54,7 @@ model_config = [
     )
 ]
 
-DATASET_DIR = '/home/plassma/Desktop/JKU/CP/asap-dataset' if os.getlogin() == 'plassma' else '/home/matthiaspl/asap-dataset'
+DATASET_DIR = '/home/plassma/Desktop/JKU/CP/asap-dataset' if os.getlogin() == 'plassma' else '/share/home/matthiaspl/asap-dataset'
 
 
 def my_split_datasets(datasets, train_idx):
@@ -93,7 +93,7 @@ def MSE_bound(dataset, log=False):
 
 dataset_fn = os.path.join(DATASET_DIR, 'asap.pyc.bz')
 
-IGNORE_CACHE = False
+IGNORE_CACHE = True
 
 if dataset_fn is not None and os.path.exists(dataset_fn) and not IGNORE_CACHE:
     datasets = load_pyc_bz(dataset_fn)
@@ -102,9 +102,9 @@ else:
     DIR_4x22 = os.path.expanduser('~/.cache/basismixer/OFAI-vienna4x22_rematched-7b60448')
     xmlfolder = os.path.join(DIR_4x22, 'musicxml')
     matchfolder = os.path.join(DIR_4x22, 'match')
-    valid_set_params = (model_config, xmlfolder, matchfolder)
-    datasets, train_idx = make_datasets(model_config,
-                             DATASET_DIR, quirks=True, valid_set_params=valid_set_params)
+    #valid_set_params = (model_config, xmlfolder, matchfolder)
+    datasets = make_datasets(model_config,
+                             DATASET_DIR, quirks=False)
     if dataset_fn is not None:
         save_pyc_bz(datasets, dataset_fn)
 
@@ -112,13 +112,11 @@ models = []
 test_sets = []
 for (dataset, in_names, out_names), config in zip(datasets, model_config):
 
-    dataset = dataset[:train_idx]  # cut off 4x22
-    train_idx = int(train_idx * 0.8)
     MSE_bound(dataset, True)
     # Build model
     model, model_out_dir = construct_model(config, in_names, out_names, out_dir)
     # Split datasets
-    train_set, valid_set, test_set = split_datasets_by_piece(dataset)#my_split_datasets(dataset, train_idx)
+    train_set, valid_set, test_set = robust_split_datasets_by_piece(dataset)#my_split_datasets(dataset, train_idx)
     print("train set: ", MSE_bound(train_set, log=False))
 
     print("test set: ", MSE_bound(test_set, log=False))

@@ -63,9 +63,8 @@ def get_pieces(model_specs, mxml_folder, match_folder, pieces=None,
             expand_grace_notes(part)
 
         # compute the basis functions
-        # todo: here
         basis, bf_names = partitura.musicanalysis.make_note_feats(part, list(
-            all_basis_functions))  # todo: ask manos if behaves as intended when wrong function name is passed
+            all_basis_functions))
         # basis, bf_names = make_basis(part, all_basis_functions)
 
         if TRANSLATE_FEATURES:
@@ -187,7 +186,7 @@ def piece_data_to_datasets(data, bf_idx_map, model_specs):
         m_datasets = []
         m_input_names = []
 
-        for bf, idx, targets, uox, name in data:
+        for bf, idx, targets, uox, name, performance_name in data:
             # idx: the global indices that this piece has
 
             # the subset of basisfunctions that this model is interested in:
@@ -207,7 +206,7 @@ def piece_data_to_datasets(data, bf_idx_map, model_specs):
                 targets = notewise_to_onsetwise(targets, uox)
             
             ds = BasisMixerDataSet(bf, model_idx_subset, n_basis,
-                                   targets, m_spec['seq_len'], name)
+                                   targets, m_spec['seq_len'], name, performance_name)
             
             m_datasets.append(ds)
 
@@ -271,13 +270,14 @@ class BasisMixerDataSet(Dataset):
         See Parameters Section.
 
     """
-    def __init__(self, basis, idx, n_basis, targets, seq_len=1, name=None):
+    def __init__(self, basis, idx, n_basis, targets, seq_len=1, name=None, performance_name=None):
         self.basis = basis
         self.idx = idx
         self.n_basis = n_basis
         self.targets = targets
         self.seq_len = seq_len
         self.name = name
+        self.performance_name = performance_name
 
     @property
     def piecewise(self):

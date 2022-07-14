@@ -11,7 +11,6 @@ from torch.utils.data import Dataset, ConcatDataset
 
 from partitura import load_musicxml, load_match
 from partitura.score import expand_grace_notes
-from basismixer.basisfunctions import make_basis
 from basismixer.utils import (pair_files,
                               get_unique_onset_idxs,
                               notewise_to_onsetwise)
@@ -20,10 +19,10 @@ from basismixer.performance_codec import get_performance_codec
 from .parse_tsv_aligment import load_alignment_from_ASAP
 from partitura.performance import PerformedPart
 from pathlib import Path
+from multiprocessing import Pool
 LOGGER = logging.getLogger(__name__)
 
 from partitura.score import GraceNote, Note
-from .data import get_pieces
 
 
 def remove_grace_notes(part):
@@ -44,20 +43,58 @@ def remove_grace_notes(part):
         part.remove(gn)
 
 
-TRANSLATE_FEATURES = {
-    "loudness_direction_feature.piano": "loudness_direction_feature.p",
-    "loudness_direction_feature.forte": "loudness_direction_feature.f",
-    "loudness_direction_feature.fz": "loudness_direction_feature.sf",
-    "loudness_direction_feature.sfz": "loudness_direction_feature.sf",
-    "loudness_direction_feature.sffz": "loudness_direction_feature.sf",
-    "loudness_direction_feature.fp": "loudness_direction_feature.sf",
-    "loudness_direction_feature.sfp": "loudness_direction_feature.sf",
-    "loudness_direction_feature.rf": "loudness_direction_feature.sf",
-    "loudness_direction_feature.rfz": "loudness_direction_feature.sf"
-}
+def process_piece(piece, root_folder, perf_codec, all_basis_functions, gracenotes):
+    data = []
+    name = str(piece).split(root_folder + '/')[1].split('/xml_score.musicxml')[0]
+    LOGGER.info('Processing {}'.format(piece))
+
+    part = load_musicxml(piece)
+    part = partitura.score.merge_parts(part)
+    part = partitura.score.unfold_part_maximal(part)
+    bm = part.beat_map
+
+    # get indices of the unique onsets
+    if gracenotes == 'remove':
+        # Remove grace notes
+        remove_grace_notes(part)
+    else:
+        # expand grace note durations (necessary for correct computation of
+        # targets)
+        expand_grace_notes(part)
+    basis, bf_names = partitura.musicanalysis.make_note_feats(part, list(all_basis_functions))
+
+    nid_dict = dict((n.id, i) for i, n in enumerate(part.notes_tied))
+
+    performances = list(Path(piece).parent.glob("*_note_alignments/note_alignment.tsv"))
+
+    for performance in performances:
+        alignment = load_alignment_from_ASAP(performance)
+        ppart = partitura.load_performance_midi(str(performance).split("_note_alignments/")[0] + ".mid")
+
+        # compute the targets
+        targets, snote_ids = perf_codec.encode(part, ppart, alignment)
+
+        matched_subset_idxs = np.array([nid_dict[nid] for nid in snote_ids])
+        basis_matched = basis[matched_subset_idxs]
+
+        score_onsets = bm([n.start.t for n in part.notes_tied])[matched_subset_idxs]
+        unique_onset_idxs = get_unique_onset_idxs(score_onsets)
+
+        performance_name = str(performance).split('/')[-2]
+
+        data.append((basis_matched, bf_names, targets, unique_onset_idxs, name, performance_name))
+    return data
 
 
-def make_datasets(model_specs, root_folder, quirks=False, gracenotes='remove', valid_set_params=None):
+class ProcessPiece:
+    def __init__(self, args):
+        self.args = args
+
+    def __call__(self, piece):
+        return process_piece(piece, *self.args)
+
+
+def make_datasets(model_specs, root_folder, quirks=False, gracenotes='remove'):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         all_targets = list(set([n for model_spec in model_specs
@@ -67,152 +104,21 @@ def make_datasets(model_specs, root_folder, quirks=False, gracenotes='remove', v
 
         bf_idx_map = {}
 
-        data = []
-
         all_basis_functions = set([n for model_spec in model_specs
                                    for n in model_spec['basis_functions']])
 
+
         pieces = list(Path(root_folder).rglob("*/xml_score.musicxml"))
+        pool = Pool(40)
 
-        i = 0
+        pieces = list(pool.map(ProcessPiece((root_folder, perf_codec, all_basis_functions, gracenotes)), pieces))
+        pieces = [list(i) for sublist in pieces for i in sublist]
+
         for piece in pieces:
-
-            print(f"{i}/{len(pieces)}")
-            i += 1
-
-            name = str(piece).split(root_folder + '/')[1].split('/xml_score.musicxml')[0]
-            LOGGER.info('Processing {}'.format(piece))
-
-            part = load_musicxml(piece)
-            part = partitura.score.merge_parts(part)
-
-            bm = part.beat_map
-
-            # get indices of the unique onsets
-            if gracenotes == 'remove':
-                # Remove grace notes
-                remove_grace_notes(part)
-            else:
-                # expand grace note durations (necessary for correct computation of
-                # targets)
-                expand_grace_notes(part)
-            basis, bf_names = partitura.musicanalysis.make_note_feats(part, list(all_basis_functions))
-
-            bf_names = [TRANSLATE_FEATURES[f] if f in TRANSLATE_FEATURES else f for f in bf_names]
-
             bf_idx = np.array([bf_idx_map.setdefault(name, len(bf_idx_map))
-                               for i, name in enumerate(bf_names)])
+                               for i, name in enumerate(piece[1])])
+            piece[1] = bf_idx
 
-            nid_dict = dict((n.id, i) for i, n in enumerate(part.notes_tied))
+        data = [tuple(l) for l in pieces]
 
-            performances = list(Path(piece).parent.glob("*_note_alignments/note_alignment.tsv"))
-
-            for performance in performances:
-                alignment = load_alignment_from_ASAP(performance)
-                ppart = partitura.load_performance_midi(str(performance).split("_note_alignments/")[0] + ".mid")#todo: can I load this from midi without loss?
-
-                if quirks:
-                    for n in alignment:
-                        if n['label'] == 'match':
-                            n['score_id'] = n['score_id'].split('-')[0]
-
-                # compute the targets
-                targets, snote_ids = perf_codec.encode(part, ppart, alignment)
-
-                matched_subset_idxs = np.array([nid_dict[nid] for nid in snote_ids])
-                basis_matched = basis[matched_subset_idxs]
-
-                score_onsets = bm([n.start.t for n in part.notes_tied])[matched_subset_idxs]
-                unique_onset_idxs = get_unique_onset_idxs(score_onsets)
-
-                data.append((basis_matched, bf_idx, targets, unique_onset_idxs, name))
-
-        if valid_set_params:
-            train_idx = len(data)
-            data_4x22, bf_idxs_4x22 = get_pieces(*valid_set_params, TRANSLATE_FEATURES=TRANSLATE_FEATURES)
-
-            for key, value in bf_idxs_4x22.items():
-                idx = bf_idx_map.setdefault(key, len(bf_idx_map))
-                for _, bf_idx, _, _, _ in data_4x22:
-                    bf_idx[bf_idx == value] = -idx  # prevent overwriting
-
-            for _, bf_idx, _, _, _ in data_4x22:
-                bf_idx[bf_idx < 0] *= -1
-            data.extend(data_4x22)
-
-            return piece_data_to_datasets(data, bf_idx_map, model_specs), train_idx
         return piece_data_to_datasets(data, bf_idx_map, model_specs)
-
-
-def performed_part_from_alignment(alignment, pedal_threshold=64, first_note_at_zero=False):#todo: delete?
-    """Make PerformedPart from performance info in a MatchFile
-
-    Parameters
-    ----------
-    mf : MatchFile
-        A MatchFile instance
-    pedal_threshold : int, optional
-        Threshold for adjusting sound off of the performed notes using
-        pedal information. Defaults to 64.
-    first_note_at_zero : bool, optional
-        When True the note_on and note_off times in the performance
-        are shifted to make the first note_on time equal zero.
-
-    Returns
-    -------
-    ppart : PerformedPart
-        A performed part
-
-    """
-    from partitura.io import MatchFile
-    mf = MatchFile()
-    mf.lines = np.array(alignment)
-
-    # Get midi time units
-    mpq = mf.info("midiClockRate")  # 500000 -> microseconds per quarter
-    ppq = mf.info("midiClockUnits")  # 500 -> parts per quarter
-
-    # PerformedNote instances for all MatchNotes
-    notes = []
-
-    first_note = next(mf.iter_notes(), None)
-    if first_note and first_note_at_zero:
-        offset = first_note.Onset * mpq / (10 ** 6 * ppq)
-    else:
-        offset = 0
-
-    for note in mf.iter_notes():
-
-        sound_off = note.Offset if note.AdjOffset is None else note.AdjOffset
-
-        notes.append(
-            dict(
-                id=note.Number,
-                midi_pitch=note.MidiPitch,
-                note_on=note.Onset * mpq / (10 ** 6 * ppq) - offset,
-                note_off=note.Offset * mpq / (10 ** 6 * ppq) - offset,
-                sound_off=sound_off * mpq / (10 ** 6 * ppq) - offset,
-                velocity=note.Velocity,
-            )
-        )
-
-    # SustainPedal instances for sustain pedal lines
-    sustain_pedal = []
-    for ped in mf.sustain_pedal:
-        sustain_pedal.append(
-            dict(
-                number=64,  # type='sustain_pedal',
-                time=ped.Time * mpq / (10 ** 6 * ppq),
-                value=ped.Value,
-            )
-        )
-
-    # Make performed part
-    ppart = PerformedPart(
-        id="P1",
-        part_name=mf.info("piece"),
-        notes=notes,
-        controls=sustain_pedal,
-        sustain_pedal_threshold=pedal_threshold,
-    )
-    return ppart
