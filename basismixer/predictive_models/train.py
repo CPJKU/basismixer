@@ -8,7 +8,7 @@ from torch import nn
 from torch.utils.data import Dataset, Sampler
 import torch.nn.functional as functional
 from tqdm import tqdm
-
+import sys
 LOGGER = logging.getLogger(__name__)
 
 
@@ -194,6 +194,10 @@ class NNTrainer(ABC):
 
         validations_wo_improvement = 0
 
+        vl, r2 = self.valid_step(0)
+        valid_losses.update(0, vl)
+        LOGGER.info('valid loss before training:' + valid_losses.last_loss + ' r2:' + str(r2))
+
         # save before training
         self.save_checkpoint(-1, False, True)
         try:
@@ -206,9 +210,9 @@ class NNTrainer(ABC):
 
                 if do_checkpoint:
                     if self.valid_dataloader is not None:
-                        vl = self.valid_step(epoch)
+                        vl, r2 = self.valid_step(epoch)
                         valid_losses.update(epoch, vl)
-                        LOGGER.info(train_losses.last_loss + '\t' + valid_losses.last_loss)
+                        LOGGER.info(train_losses.last_loss + '\t' + valid_losses.last_loss + '\t r2:' + str(r2))
                     else:
                         vl = [tl]
                         LOGGER.info(train_losses.last_loss)
@@ -416,10 +420,22 @@ class SupervisedTrainer(NNTrainer):
 
         return np.mean(losses)
 
+    @staticmethod
+    def r2(preds, targets):
+        pm = torch.mean(preds, 1, keepdim=True)
+        tm = torch.mean(targets, 1, keepdim=True)
+        n = (preds - pm) * (targets - tm)
+        n = n.sum(1)
+
+        d = torch.sqrt(((preds - pm)**2).sum(1) * ((targets - tm)**2).sum(1))
+
+        return (n / d).mean()
+
     def valid_step(self, *args, **kwargs):
 
         self.model.eval()
         losses = []
+        correlations = []
         with torch.no_grad():
             for input, target in self.valid_dataloader:
 
@@ -439,7 +455,9 @@ class SupervisedTrainer(NNTrainer):
                     loss = [self.valid_loss(output, target)]
                 losses.append([l.item() for l in loss])
 
-        return np.mean(losses, axis=0)
+                correlations.append(self.r2(output, target).item())
+
+        return np.mean(losses, axis=0), np.mean(np.ma.masked_invalid(correlations), axis=0)
 
 
 class MSELoss(nn.Module):

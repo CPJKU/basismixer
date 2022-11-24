@@ -24,7 +24,7 @@ from partitura.score import (expand_grace_notes,
                              remove_grace_notes)
 
 from basismixer import TOY_MODEL_CONFIG
-from basismixer.basisfunctions import make_basis
+from partitura.musicanalysis import make_note_feats
 from basismixer.performance_codec import get_performance_codec
 from basismixer.predictive_models import (FullPredictiveModel,
                                           construct_model)
@@ -37,7 +37,9 @@ from basismixer.utils import (sanitize_performed_part,
                               RENDER_CONFIG)
 
 logging.basicConfig(level=logging.INFO)
+import sys
 LOGGER = logging.getLogger(__name__)
+LOGGER.addHandler(logging.StreamHandler(sys.stdout))
 
 
 def load_model(model_config, default_values=DEFAULT_VALUES):
@@ -134,7 +136,7 @@ def compute_basis_from_score(score_fn, input_names):
     # part = unfold_part_maximal(part)
     
     # Compute basis functions
-    _basis, bf_names = make_basis(part, list(set([bf.split('.')[0] for bf in input_names])))
+    _basis, bf_names = make_note_feats(part, list(set([bf.split('.')[0] for bf in input_names])))
     basis = np.zeros((len(_basis), len(input_names)))
     for i, n in enumerate(input_names):
         try:
@@ -144,7 +146,6 @@ def compute_basis_from_score(score_fn, input_names):
         basis[:, i] = _basis[:, ix]
 
     return basis, part
-
 
 
 def predict(model_config, score_fn, default_values=DEFAULT_VALUES):

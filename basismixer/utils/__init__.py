@@ -5,7 +5,8 @@ from .generic import (
     save_pyc_bz,
     to_memmap,
     pair_files,
-    clip)
+    clip,
+    split_datasets_by_piece)
 
 from .music import (
     get_unique_onset_idxs,

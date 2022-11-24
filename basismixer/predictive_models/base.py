@@ -274,3 +274,11 @@ class NNModel(nn.Module, PredictiveModel):
     def dtype(self, dtype):
         self._dtype = dtype
         self.type(dtype)
+
+    def to(self, *args, **kwargs):
+        result = super().to(*args, **kwargs)
+        try:
+            self.device = next(result.parameters()).device
+        except StopIteration:
+            pass# needn't update device if we have no params
+        return result

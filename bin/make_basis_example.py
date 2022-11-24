@@ -1,23 +1,18 @@
 #!/usr/bin/env python
 
 import argparse
-import json
-import logging
-import numpy as np
 
 import matplotlib.pyplot as plt
-import torch
-
+import numpy as np
 import partitura
+import partitura.musicanalysis as ma
+import partitura.score
 
-import basismixer
-from basismixer.utils import to_memmap
-import basismixer.basisfunctions as bf
 
 def main():
     parser = argparse.ArgumentParser(description="Create basis functions for a MusicXML file")
     parser.add_argument("musicxml", help="MusicXML file")
-    parser.add_argument("--basis", type=str, nargs='+', help='names of one or more basis functions')
+    parser.add_argument("--basis", type=str, nargs='+', help='names of one or more basis features')
     # parser.add_argument("--cachefolder", type=str, help='Cache folder')
     # parser.add_argument("--basisconfig", type=str,
     #                     help=("JSON file specifying a set of basis functions for each expressive target. "
@@ -28,8 +23,10 @@ def main():
     # basis_names = list(set(i for ii in basis_config.values() for i in ii))
     
     part = partitura.load_musicxml(args.musicxml)
+    part = partitura.score.merge_parts(part)
+    part = partitura.score.unfold_part_maximal(part, update_ids=False)
     print(part.pretty())
-    basis, names = bf.make_basis(part, args.basis)
+    basis, names = ma.make_note_feats(part, args.basis)
     # plot
     onsets = None # np.array([n.start.t for n in part.notes_tied])
     plot_basis(basis, names, '/tmp/out.png', onsets, title=part.part_name)

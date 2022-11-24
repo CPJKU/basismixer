@@ -1,17 +1,14 @@
 #!/usr/bin/env python
 
 import argparse
-import json
-import logging
 
 import matplotlib.pyplot as plt
 import numpy as np
-
 import partitura
 from partitura.utils import partition
-import basismixer.basisfunctions
-from basismixer.utils import pair_files
+
 import basismixer.performance_codec as pc
+from basismixer.utils import pair_files
 
 
 def main():
