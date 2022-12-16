@@ -23,21 +23,6 @@ LOGGER = logging.getLogger(__name__)
 #     W = np.array([n.midi_pitch for n in part.notes_tied]).astype(np.float)
 #     return W.reshape((-1, 1)), ['my']
 
-#basis_functions =['polynomial_pitch_feature',
-#                          'loudness_direction_feature',
-#                          'tempo_direction_feature',
-#                          'articulation_feature',
- #                         'duration_feature',
- ##                         # my_feature,
- #                         'grace_feature',
- #                         'slur_feature',
-  #                        'fermata_feature',
-  ##                        # 'metrical_feature'
-  #                        'metrical_strength_feature',
-   ##                       'time_signature_feature',
-     #                     'relative_score_position_feature'
-    #     ]
-
 basis_features = ['polynomial_pitch_feature', 'duration_feature', 'metrical_strength_feature']
 
 CONFIG = [
@@ -51,12 +36,12 @@ CONFIG = [
                               hidden_size=64)),
          train_args=dict(
              optimizer=['Adam', dict(lr=1e-4)],
-             epochs=20,
-             save_freq=1,
+             epochs=10,
+             save_freq=5,
              early_stopping=100,
              batch_size=50,
          )
-         )
+    )
 ]
 
 def jsonize_dict(input_dict):
