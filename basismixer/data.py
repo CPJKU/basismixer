@@ -1,24 +1,23 @@
 #!/usr/bin/env python
 
 import logging
-import os
-
+import multiprocessing
 import warnings
+from multiprocessing import Pool
+from pathlib import Path
 
 import numpy as np
 import partitura.musicanalysis
-from torch.utils.data import Dataset, ConcatDataset
-
 from partitura import load_musicxml, load_match
 from partitura.score import expand_grace_notes
+from torch.utils.data import Dataset
+
+from basismixer.performance_codec import get_performance_codec
 from basismixer.utils import (pair_files,
                               get_unique_onset_idxs,
                               notewise_to_onsetwise)
-from basismixer.performance_codec import get_performance_codec
 from .parse_tsv_alignment import load_alignment_from_ASAP
-from partitura.performance import PerformedPart
-from pathlib import Path
-from multiprocessing import Pool
+
 LOGGER = logging.getLogger(__name__)
 
 from partitura.score import GraceNote, Note
@@ -95,7 +94,9 @@ def process_piece(piece_performances, perf_codec, all_basis_functions, gracenote
         score_onsets = bm([n.start.t for n in part.notes_tied])[matched_subset_idxs]
         unique_onset_idxs = get_unique_onset_idxs(score_onsets)
 
-        performance_name = str(performance).split('/')[-2]
+        i = -2 if dataset_name == 'asap' else -1
+
+        performance_name = str(performance).split('/')[i]
 
         data.append((basis_matched, bf_names, targets, unique_onset_idxs, name, performance_name))
     return data
@@ -123,7 +124,7 @@ def filter_blocklist(pieces):
     return pieces_filtered
 
 
-def make_datasets(model_specs, root_folder, dataset_name, gracenotes='remove'):
+def make_datasets(model_specs, root_folder, dataset_name, gracenotes='remove', processes=0):
     assert dataset_name in ['4x22', 'magaloff', 'asap']
 
     quirks = dataset_name == 'magaloff'
@@ -157,13 +158,12 @@ def make_datasets(model_specs, root_folder, dataset_name, gracenotes='remove'):
                     continue
                 piece_performances.append((list(pf[1]['mxml'])[0], list(pf[1]['match'])))
 
+        if processes <= 0:
+            processes = multiprocessing.cpu_count()
 
-
-
-        N_PROC = 1
-        pool = Pool(N_PROC)
-        if N_PROC > 1:
-            pieces = list(pool.map(ProcessPiece((root_folder, perf_codec, all_basis_functions, gracenotes)), piece_performances))
+        if processes > 1:
+            pool = Pool(processes)
+            pieces = list(pool.map(ProcessPiece((perf_codec, all_basis_functions, gracenotes, dataset_name)), piece_performances))
         else:
             pieces = [process_piece(p, perf_codec, all_basis_functions, gracenotes, dataset_name) for p in piece_performances]
         pieces = [list(i) for sublist in pieces for i in sublist]
@@ -222,8 +222,9 @@ def piece_data_to_datasets(data, bf_idx_map, model_specs):
                 bf = notewise_to_onsetwise(bf, uox)
                 targets = notewise_to_onsetwise(targets, uox)
 
-            ds = BasisMixerDataSet(bf, model_idx_subset, n_basis,
-                                   targets, m_spec['seq_len'], name, perf_name)
+            ds = BasisMixerDataSet(bf, model_idx_subset, n_basis, targets,
+                                   input_names_per_model[-1], output_names_per_model[-1],
+                                   m_spec['seq_len'], name, perf_name)
 
             m_datasets.append(ds)
 
@@ -287,7 +288,7 @@ class BasisMixerDataSet(Dataset):
 
     """
 
-    def __init__(self, basis, idx, n_basis, targets, seq_len=1, name=None, perf_name=None):
+    def __init__(self, basis, idx, n_basis, targets, input_names, output_names, seq_len=1, name=None, perf_name=None):
         self.basis = basis
         self.idx = idx
         self.n_basis = n_basis
@@ -295,6 +296,8 @@ class BasisMixerDataSet(Dataset):
         self.seq_len = seq_len
         self.name = name
         self.perf_name = perf_name
+        self.input_names = input_names
+        self.output_names = output_names
 
     @property
     def piecewise(self):

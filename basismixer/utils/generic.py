@@ -134,7 +134,7 @@ def split_datasets_by_piece(datasets, fold=0, folds=5, dataset_name='magaloff'):
     from partitura.utils import partition
     from pandas_ods_reader import read_ods
 
-    if dataset_name != 'asap':
+    if dataset_name == 'asap':
         ods = read_ods("../basismixer/assets/perfwise_insertions_deletions.ods")
 
         relevant = ods.values[:, :2]
@@ -172,3 +172,15 @@ def split_datasets_by_piece(datasets, fold=0, folds=5, dataset_name='magaloff'):
 
     return (ConcatDataset(train_set),
             ConcatDataset(test_set))
+
+
+def prepare_datasets_for_model(datasets, model_config):
+    for bmds in datasets:
+        targets, output_names = [], []
+        for param in model_config['parameter_names']:
+            i = bmds.output_names.index(param)
+            targets.append(bmds.targets[:, i])
+            output_names.append(bmds.output_names[i])
+        bmds.targets, bmds.output_names = np.stack(targets, 1), np.array(output_names)
+
+    return datasets

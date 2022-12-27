@@ -9,12 +9,13 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, ConcatDataset
 
+from basismixer.predictive_models.train import MultiMSELoss
+
 logging.basicConfig(level=logging.INFO)
 
 from basismixer.predictive_models import (construct_model,
-                                          SupervisedTrainer,
-                                          MSELoss)
-from basismixer.utils import load_pyc_bz, save_pyc_bz, split_datasets_by_piece
+                                          SupervisedTrainer)
+from basismixer.utils import load_pyc_bz, save_pyc_bz, split_datasets_by_piece, prepare_datasets_for_model
 from basismixer import make_datasets
 
 LOGGER = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ basis_features = ['polynomial_pitch_feature', 'duration_feature', 'metrical_stre
 CONFIG = [
     dict(onsetwise=False,
          basis_functions=basis_features,
-         parameter_names=['velocity_dev', 'timing', 'articulation_log', 'velocity_trend', 'beat_period_standardized', 'beat_period_mean', 'beat_period_std'],  #['velocity_dev', 'timing', 'articulation_log', 'velocity_trend', 'beat_period_standardized', 'beat_period_mean', 'beat_period_std']
+         parameter_names=['velocity_dev','timing', 'articulation_log', 'velocity_trend'],# 'velocity_dev','timing', 'articulation_log', 'velocity_trend', 'beat_period_standardized', 'beat_period_mean', 'beat_period_std'],  #['velocity_dev', 'timing', 'articulation_log', 'velocity_trend', 'beat_period_standardized', 'beat_period_mean', 'beat_period_std']
          seq_len=50,
          model=dict(constructor=['basismixer.predictive_models', 'RecurrentModel'],
                     args=dict(recurrent_size=128,
@@ -37,7 +38,7 @@ CONFIG = [
          train_args=dict(
              optimizer=['Adam', dict(lr=1e-4)],
              epochs=10,
-             save_freq=5,
+             save_freq=1,
              early_stopping=100,
              batch_size=50,
          )
@@ -108,11 +109,12 @@ if __name__ == '__main__':
             save_pyc_bz(datasets, args.cache)
 
     for (mdatasets, in_names, out_names), config in zip(datasets, model_config):
+        mdatasets = prepare_datasets_for_model(mdatasets, config)
         dataset = ConcatDataset(mdatasets)
         batch_size = config['train_args'].pop('batch_size')
 
         #### Create train and validation data loaders #####
-        train_set, test_set = split_datasets_by_piece(mdatasets, 0, 5, False)
+        train_set, test_set = split_datasets_by_piece(dataset.datasets, 0, 5, False)
         train_loader, valid_loader = DataLoader(train_set, batch_size=batch_size), \
                                      DataLoader(test_set, batch_size=batch_size)
 
@@ -121,8 +123,8 @@ if __name__ == '__main__':
         model_cfg = config['model'].copy()
         model_cfg['args']['input_names'] = in_names
         model_cfg['args']['input_size'] = len(in_names)
-        model_cfg['args']['output_names'] = out_names
-        model_cfg['args']['output_size'] = len(out_names)
+        model_cfg['args']['output_names'] = config['parameter_names']
+        model_cfg['args']['output_size'] = len(config['parameter_names'])
         model_cfg['args']['input_type'] = 'onsetwise' if config['onsetwise'] else 'notewise'
         model_name = ('-'.join(out_names) +
                       '-' + ('onsetwise' if config['onsetwise'] else 'notewise'))
@@ -135,12 +137,12 @@ if __name__ == '__main__':
                   indent=2)
         model = construct_model(model_cfg)
 
-        loss = MSELoss()
+        loss = MultiMSELoss(config['parameter_names'])#MSELoss()
 
         ### Construct the optimizer ####
         optim_name, optim_args = config['train_args']['optimizer']
         optim = getattr(torch.optim, optim_name)
-        config['train_args']['optimizer'] = optim(model.parameters(), **optim_args)
+        config['train_args']['optimizer'] = optim(list(model.parameters()) + list(loss.parameters()), **optim_args)
 
         trainer = SupervisedTrainer(model=model,
                                     train_loss=loss,

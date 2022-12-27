@@ -212,7 +212,8 @@ class NNTrainer(ABC):
                     if self.valid_dataloader is not None:
                         vl, r2 = self.valid_step(epoch)
                         valid_losses.update(epoch, vl)
-                        LOGGER.info(train_losses.last_loss + '\t' + valid_losses.last_loss + '\t r2:' + str(r2))
+                        LOGGER.info('t_loss:' + train_losses.last_loss + '\t v_loss:' + valid_losses.last_loss +
+                                    '\t r2:' + str(r2))
                     else:
                         vl = [tl]
                         LOGGER.info(train_losses.last_loss)
@@ -368,7 +369,8 @@ class SupervisedTrainer(NNTrainer):
                  save_freq=10,
                  early_stopping=100,
                  out_dir='.',
-                 resume_from_saved_model=None):
+                 resume_from_saved_model=None,
+                 **rest):
         super().__init__(model=model,
                          train_loss=train_loss,
                          optimizer=optimizer,
@@ -413,6 +415,7 @@ class SupervisedTrainer(NNTrainer):
 
             self.optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1)
             self.optimizer.step()
 
         if self.lr_scheduler is not None:
@@ -429,7 +432,7 @@ class SupervisedTrainer(NNTrainer):
 
         d = torch.sqrt(((preds - pm)**2).sum(1) * ((targets - tm)**2).sum(1))
 
-        return (n / d).mean()
+        return (n / d).mean(0)
 
     def valid_step(self, *args, **kwargs):
 
@@ -455,9 +458,9 @@ class SupervisedTrainer(NNTrainer):
                     loss = [self.valid_loss(output, target)]
                 losses.append([l.item() for l in loss])
 
-                correlations.append(self.r2(output, target).item())
+                correlations.append(self.r2(output, target).cpu().numpy())
 
-        return np.mean(losses, axis=0), np.mean(np.ma.masked_invalid(correlations), axis=0)
+        return np.mean(losses, axis=0), np.ma.masked_invalid(correlations).mean(0)
 
 
 class MSELoss(nn.Module):
@@ -465,3 +468,23 @@ class MSELoss(nn.Module):
 
     def __call__(self, predictions, targets):
         return functional.mse_loss(predictions, targets)
+
+
+class MultiMSELoss(nn.Module):
+
+    WEIGHTS = {'velocity_dev': 1000, 'timing': 1000, 'articulation_log': 0.5, 'velocity_trend': 10, 'beat_period_standardized': 1,
+                          'beat_period_mean': 1, 'beat_period_std': 1}
+
+    def __init__(self, targets):
+        super(MultiMSELoss, self).__init__()
+        self.task_num = len(targets)
+        self.log_vars = nn.Parameter(torch.zeros((self.task_num)))
+        self.weights = [self.WEIGHTS[t] for t in targets]
+
+    def forward(self, preds, targets):
+        loss = 0
+
+        for i, v in enumerate(self.log_vars):
+            loss += torch.exp(-v) * self.weights[i] * functional.mse_loss(preds, targets) + v
+
+        return loss

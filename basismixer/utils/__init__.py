@@ -6,7 +6,8 @@ from .generic import (
     to_memmap,
     pair_files,
     clip,
-    split_datasets_by_piece)
+    split_datasets_by_piece,
+    prepare_datasets_for_model)
 
 from .music import (
     get_unique_onset_idxs,
