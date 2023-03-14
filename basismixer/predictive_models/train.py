@@ -170,19 +170,20 @@ class NNTrainer(ABC):
         # self.model.out_std = out_std
 
 
-    def train(self):
+    def train(self, fold=None):
 
         self.compute_data_stats()
         
         train_loss_name = getattr(self.train_loss, 'name', 'Train Loss')
-        train_fn = os.path.join(self.out_dir, 'train_loss.txt')
+
+        train_fn = os.path.join(self.out_dir, f'train_loss{fold}.txt')
         # Initialize TrainProgressMonitors
         train_losses = TrainProgressMonitor(train_loss_name,
                                             fn=train_fn)
         valid_loss_name = None
         valid_losses = None
         if self.valid_dataloader is not None:
-            valid_fn = os.path.join(self.out_dir, 'valid_loss.txt')
+            valid_fn = os.path.join(self.out_dir, f'valid_loss{fold}.txt')
             if isinstance(self.valid_loss, (list, tuple)):
                 valid_loss_name = [getattr(crit, 'name', 'Valid Loss {0}'.format(i))
                                    for i, crit in enumerate(self.valid_loss)]
@@ -195,7 +196,7 @@ class NNTrainer(ABC):
         validations_wo_improvement = 0
 
         vl, r2 = self.valid_step(0)
-        valid_losses.update(0, vl)
+        valid_losses.update(0, vl, r2)
         LOGGER.info('valid loss before training:' + valid_losses.last_loss + ' r2:' + str(r2))
 
         # save before training
@@ -204,14 +205,14 @@ class NNTrainer(ABC):
             for epoch in range(self.start_epoch, self.epochs):
                 tl = self.train_step(epoch)
 
-                train_losses.update(epoch, tl)
+                train_losses.update(epoch, tl, r2)
 
                 do_checkpoint = np.mod(epoch + 1, self.save_freq) == 0
 
                 if do_checkpoint:
                     if self.valid_dataloader is not None:
                         vl, r2 = self.valid_step(epoch)
-                        valid_losses.update(epoch, vl)
+                        valid_losses.update(epoch, vl, r2)
                         LOGGER.info('t_loss:' + train_losses.last_loss + '\t v_loss:' + valid_losses.last_loss +
                                     '\t r2:' + str(r2))
                     else:
@@ -303,6 +304,7 @@ class TrainProgressMonitor(object):
         self.name = name
         self.losses = []
         self.epochs = []
+        self.correlations = []
         self.fn = fn
         self.show_fmt = show_fmt
         self.write_fmt = write_fmt
@@ -321,13 +323,13 @@ class TrainProgressMonitor(object):
 
             f.write(header)
 
-    def update(self, epoch, loss):
+    def update(self, epoch, loss, correlations=None):
         """
         Append new loss(es) and update the log file
         """
         self.losses.append(loss)
-
         self.epochs.append(epoch)
+        self.correlations.append(correlations)
 
         self.update_log()
 
@@ -352,6 +354,13 @@ class TrainProgressMonitor(object):
             out_str = '\t'.join([self.write_fmt.format(l) for l in self.losses[-1]])
         else:
             out_str = self.write_fmt.format(float(self.losses[-1]))
+
+        if self.correlations[-1] is not None:
+            out_str += '\t r2:'
+            if isinstance(self.correlations[-1], (list, tuple, np.ndarray)):
+                out_str += '\t'.join([self.write_fmt.format(l) for l in self.correlations[-1]])
+            else:
+                out_str += self.write_fmt.format(float(self.correlations[-1]))
 
         with open(self.fn, 'a') as f:
             f.write('{0}\t{1}\n'.format(self.epochs[-1], out_str))

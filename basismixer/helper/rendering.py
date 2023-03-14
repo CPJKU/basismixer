@@ -10,7 +10,7 @@ import logging
 
 from IPython.display import display, Audio
 
-from partitura import save_performance_midi, load_musicxml
+from partitura import save_performance_midi, load_musicxml, load_score_midi
 from partitura.score import expand_grace_notes, unfold_part_maximal
 from basismixer.predictive_models import FullPredictiveModel, construct_model
 from basismixer.performance_codec import get_performance_codec

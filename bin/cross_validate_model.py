@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 from basismixer.helper.rendering import compute_basis_from_xml
 from basismixer.performance_codec import get_performance_codec
-from basismixer.predictive_models.train import MultiMSELoss
+from basismixer.predictive_models.train import MultiMSELoss, MSELoss
 
 logging.basicConfig(level=logging.INFO)
 
@@ -50,7 +50,7 @@ CONFIG = [
              epochs=20,
              save_freq=1,
              early_stopping=100,
-             batch_size=50,
+             batch_size=128,
          )
     )
 ]
@@ -75,7 +75,12 @@ def render_fold_match(model, pieces, fold):
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                xml_fn = args.dataset_root_folder + 'xml/' + piece + '.xml' if args.dataset_name == 'magaloff' else args.dataset_root_folder + f'{piece}/xml_score.musicxml'
+                if args.dataset_name == 'magaloff':
+                    xml_fn = args.dataset_root_folder + 'xml/' + piece + '.xml'
+                elif args.dataset_name == 'asap':
+                    xml_fn = args.dataset_root_folder + f'{piece}/xml_score.musicxml'
+                else:
+                    xml_fn = args.dataset_root_folder + 'musicxml/' + piece + '.musicxml'
                 basis, part = compute_basis_from_xml(xml_fn, model.input_names)
                 onsets = np.array([n.start.t for n in part.notes_tied])
                 preds = predicter.predict(basis, onsets)
@@ -108,7 +113,12 @@ if __name__ == '__main__':
                         default=CONFIG)
     parser.add_argument("--out-dir", help="Output directory",
                         default='/tmp')
+    parser.add_argument('--targets', default=[], nargs='+')
+
     args = parser.parse_args()
+
+    if args.targets:
+        CONFIG[0]["parameter_names"] = args.targets
 
     folds = args.folds
 
@@ -137,7 +147,9 @@ if __name__ == '__main__':
 
     if args.cache and os.path.exists(args.cache):
         LOGGER.info('Loading data from {}'.format(args.cache))
-        datasets = load_pyc_bz(args.cache)
+        datasets = list(load_pyc_bz(args.cache))
+        if args.targets:
+            datasets[0] = (datasets[0][0], datasets[0][1], args.targets)
     else:
         datasets = make_datasets(model_config,
                                  args.dataset_root_folder,
@@ -177,7 +189,7 @@ if __name__ == '__main__':
                       indent=2)
             model = construct_model(model_cfg)
 
-            loss = MultiMSELoss(config['parameter_names'])
+            loss = MultiMSELoss(config['parameter_names']) if len(config['parameter_names']) > 1 else MSELoss()
 
             ### Construct the optimizer ####
             optim_name, optim_args = config['train_args']['optimizer_params']
@@ -193,7 +205,7 @@ if __name__ == '__main__':
                                         optimizer=optim,
                                         **config['train_args'])
 
-            trainer.train()
+            trainer.train(f'_{fold}')
 
             test_performance_names = set([t.name for t in test_set.datasets])
             test_pieces = [p for p in mdatasets if p.name in test_performance_names]
