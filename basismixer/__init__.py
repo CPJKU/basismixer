@@ -11,7 +11,6 @@ from basismixer.performance_codec import (
     OnsetwiseDecompositionDynamicsCodec,
     TimeCodec,
 )
-# from basismixer.data import make_dataset
 from basismixer.data import make_datasets
 
 # define a version variable
