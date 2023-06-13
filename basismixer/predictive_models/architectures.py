@@ -81,6 +81,7 @@ class RecurrentModel(NNModel):
                  input_size, output_size,
                  recurrent_size, hidden_size,
                  n_layers=1, dropout=0.0,
+                 recurrent_unit='GRU',
                  dense_nl=nn.ReLU(),
                  bidirectional=True,
                  batch_first=True,
@@ -102,7 +103,15 @@ class RecurrentModel(NNModel):
         self.n_layers = n_layers
         self.batch_first = batch_first
         self.bidirectional = bidirectional
-        self.rnn = nn.GRU(input_size, self.recurrent_size,
+        self.recurrent_unit = recurrent_unit
+        if recurrent_unit == 'GRU':
+            recurrent_unit = nn.GRU
+        elif recurrent_unit == 'LSTM':
+            recurrent_unit = nn.LSTM
+        else:
+            raise Exception(recurrent_unit + "is not supported as recurrent unit")
+
+        self.rnn = recurrent_unit(input_size, self.recurrent_size,
                           self.n_layers,
                           batch_first=batch_first, dropout=dropout,
                           bidirectional=self.bidirectional)
@@ -117,19 +126,22 @@ class RecurrentModel(NNModel):
         if self.output_names is None:
             self.output_names = [str(i) for i in range(self.output_size)]
 
-    def init_hidden(self, batch_size):
+    def init_hidden(self, x):
         if self.bidirectional:
             n_layers = 2 * self.n_layers
         else:
             n_layers = self.n_layers
-        return torch.zeros(n_layers, batch_size, self.recurrent_size)
+        if self.recurrent_unit == 'LSTM':
+            return (torch.zeros(n_layers, x.size(0), self.recurrent_size).type(x.type()),
+                    torch.zeros(n_layers, x.size(0), self.recurrent_size).type(x.type()))
+        return torch.zeros(n_layers, x.size(0), self.recurrent_size).type(x.type())
 
     @standardize
     def forward(self, x):
         batch_size = x.size(0)
         seq_len = x.size(1)
-        h0 = self.init_hidden(batch_size).type(x.type())
-        # tensor of shape (batch_size, seq_len, hidden_size*2) if bidirectional
+        h0 = self.init_hidden(x)
+        # tensor of shape (batch_size, seq_len, hidden_size*2) if bidirectional, tuple of 2 tensors if LSTM
         output, h = self.rnn(x, h0)
         flatten_shape = (self.recurrent_size * 2
                          if self.bidirectional else self.recurrent_size)

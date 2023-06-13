@@ -6,6 +6,7 @@ import tempfile
 from collections import defaultdict
 
 import numpy as np
+from torch.utils.data import ConcatDataset
 
 
 def load_pyc_bz(fn):
@@ -129,5 +130,46 @@ def clip(v, low=0, high=127):
         v[too_high] = high
 
 
+def split_datasets_by_piece(datasets, fold=0, folds=5, dataset_name='magaloff'):
+    from partitura.utils import partition
+    from pandas_ods_reader import read_ods
 
-    
+    if dataset_name == 'asap':
+        # This does not seem to work...
+        ods = read_ods("../basismixer/assets/perfwise_insertions_deletions.ods")
+
+        relevant = ods.values[:, :2]
+        robust = [r[0].split('asap-dataset\\')[1] for r in relevant if r[1] in ['c']]  # , 'c + highs', 'c + ornaments'
+
+        robust_performances = []
+        for d in datasets:
+            for r in robust:
+                if d.perf_name in r and d.name in r:
+                    robust_performances.append(d)
+        datasets = robust_performances
+
+    by_piece = partition(lambda d: d.name, datasets)
+    pieces = list(by_piece.keys())
+
+    RNG = np.random.RandomState(1984)
+    RNG.shuffle(pieces)
+
+
+    test_size = 1 / folds
+    n_test = max(1, int(np.round(test_size*len(pieces))))
+    n_train = len(pieces) - n_test
+
+    if n_train < 1:
+        raise Exception('Not enough pieces to split datasets according '
+                        'to the specified test/validation proportions')
+
+    test_start = n_test * fold
+    test_end = n_test * (1 + fold)
+    test_pieces = pieces[test_start:test_end]
+    train_pieces = [p for p in pieces if not p in test_pieces]
+
+    test_set = [d for pd in [by_piece[p] for p in test_pieces] for d in pd]
+    train_set = [d for pd in [by_piece[p] for p in train_pieces] for d in pd]
+
+    return (ConcatDataset(train_set),
+            ConcatDataset(test_set))

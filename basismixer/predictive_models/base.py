@@ -6,37 +6,43 @@ import numpy as np
 import torch
 from torch import nn
 
-from basismixer.utils import (notewise_to_onsetwise,
-                              onsetwise_to_notewise,
-                              get_unique_onset_idxs)
+from basismixer.utils import (
+    notewise_to_onsetwise,
+    onsetwise_to_notewise,
+    get_unique_onset_idxs,
+)
 
 
 def get_object_from_location(location, name):
     module = importlib.import_module(location)
     return getattr(module, name)
 
+
 def get_nonlinearity(nonlinearity):
 
-    error = ValueError('The nonlinearity has to be a string, a tuple with the first element being '
-                       'a string and the second a dictionary specifying the keyworkd arguments '
-                       'for building a nonlinearity or a callable')
+    error = ValueError(
+        "The nonlinearity has to be a string, a tuple with the first element being "
+        "a string and the second a dictionary specifying the keyworkd arguments "
+        "for building a nonlinearity or a callable"
+    )
     if nonlinearity is None:
         nonlinearity = nn.Identity()
     elif isinstance(nonlinearity, str):
         try:
             nonlinearity = getattr(nn, nonlinearity)()
         except:
-            raise ValueError('Nonlinearity not found')
+            raise ValueError("Nonlinearity not found")
     elif isinstance(nonlinearity, (list, tuple)):
         if not isinstance(nonlinearity[0], str):
-            raise ValueError('If the given nonlinearity is a tuple, the first entry needs to be a string')
+            raise ValueError(
+                "If the given nonlinearity is a tuple, the first entry needs to be a string"
+            )
         nonlinearity = getattr(nn, nonlinearity[0])(**nonlinearity[1])
 
     elif not callable(nonlinearity):
         raise error
 
     return nonlinearity
-        
 
 
 def set_params(m, params):
@@ -44,8 +50,8 @@ def set_params(m, params):
 
 
 def construct_model(arch_spec, params=None):
-    constructor = get_object_from_location(*arch_spec['constructor'])
-    m = constructor(**arch_spec['args'])
+    constructor = get_object_from_location(*arch_spec["constructor"])
+    m = constructor(**arch_spec["args"])
 
     if params:
         set_params(m, params)
@@ -56,21 +62,27 @@ def construct_model(arch_spec, params=None):
 
 
 def standardize(func):
-    """Standardization decorator for forward method of NNModels.
+    """Standardization decorator for forward method of NNModels."""
 
-    """
     def wrapper(self, x):
-        return func(self, (x - self.in_mean)/self.in_std)*self.out_std + self.out_mean
+        return (
+            func(self, (x - self.in_mean) / self.in_std) * self.out_std + self.out_mean
+        )
 
     return wrapper
 
-class FullPredictiveModel(nn.Module):
-    """Meta model for predicting an expressive performance
-    """
 
-    def __init__(self, models, input_names, output_names,
-                 default_values={},
-                 overlapping_output_strategy='mean'):
+class FullPredictiveModel(nn.Module):
+    """Meta model for predicting an expressive performance"""
+
+    def __init__(
+        self,
+        models,
+        input_names,
+        output_names,
+        default_values={},
+        overlapping_output_strategy="mean",
+    ):
         super().__init__()
         self.models = nn.ModuleList(
             construct_model(m) if isinstance(m, dict) else m for m in models
@@ -82,14 +94,17 @@ class FullPredictiveModel(nn.Module):
 
         # check that there is a default value for each expressive parameter
         if len(set(default_values.keys()).difference(set(self.output_names))) != 0:
-            raise KeyError('`default_values` must contain a value for each '
-                           'parameter in `output_names`.')
+            raise KeyError(
+                "`default_values` must contain a value for each "
+                "parameter in `output_names`."
+            )
 
         # indices of the basis functions for each model
         self.model_bf_idxs = []
         for model in self.models:
-            bf_idxs = np.array([int(np.where(self.input_names == bf)[0])
-                                for bf in model.input_names])
+            bf_idxs = np.array(
+                [int(np.where(self.input_names == bf)[0]) for bf in model.input_names]
+            )
             self.model_bf_idxs.append(bf_idxs)
 
         # indices of the models for each parameter
@@ -102,7 +117,7 @@ class FullPredictiveModel(nn.Module):
     def predict(self, x, score_onsets):
 
         if x.ndim != 2:
-            raise ValueError('The inputs should be a 2D array')
+            raise ValueError("The inputs should be a 2D array")
 
         unique_onset_idxs = get_unique_onset_idxs(score_onsets)
 
@@ -114,33 +129,34 @@ class FullPredictiveModel(nn.Module):
             model_input = x[:, bf_idxs]
 
             # aggregate bfs per onset
-            if model.input_type == 'onsetwise':
-                model_input = notewise_to_onsetwise(model_input,
-                                                    unique_onset_idxs)
+            if model.input_type == "onsetwise":
+                model_input = notewise_to_onsetwise(model_input, unique_onset_idxs)
             # make predictions
             preds = model.predict(model_input)
 
             # expand predictions per each note
-            if model.input_type == 'onsetwise':
+            if model.input_type == "onsetwise":
                 preds = onsetwise_to_notewise(preds, unique_onset_idxs)
 
             _predictions.append(preds)
 
         # structured array for holding expressive parameters
-        predictions = np.zeros(len(score_onsets),
-                               dtype=[(pn, 'f4') for pn in self.output_names])
+        predictions = np.zeros(
+            len(score_onsets), dtype=[(pn, "f4") for pn in self.output_names]
+        )
         # assign predictions according to the overlapping strategy
         # or default value
         for pn in self.output_names:
             model_idxs = self.model_param_idxs[pn]
             if len(model_idxs) > 0:
-                if self.overlapping_output_strategy == 'FIFO':
+                if self.overlapping_output_strategy == "FIFO":
                     predictions[pn] = _predictions[model_idxs[0]][pn]
 
-                elif self.overlapping_output_strategy == 'mean':
+                elif self.overlapping_output_strategy == "mean":
                     predictions[pn] = np.mean(
                         np.column_stack([_predictions[mix][pn] for mix in model_idxs]),
-                        axis=1)
+                        axis=1,
+                    )
             else:
                 predictions[pn] = np.ones(len(score_onsets)) * self.default_values[pn]
         return predictions
@@ -151,11 +167,14 @@ class PredictiveModel(ABC):
     Predictive Model
     """
 
-    def __init__(self, input_names=None,
-                 output_names=None,
-                 is_rnn=False,
-                 input_type=None,
-                 requires_onset_info=False):
+    def __init__(
+        self,
+        input_names=None,
+        output_names=None,
+        is_rnn=False,
+        input_type=None,
+        requires_onset_info=False,
+    ):
         # name of input features
         self.input_names = input_names
         # name of output features
@@ -170,12 +189,12 @@ class PredictiveModel(ABC):
         if self.requires_onset_info:
             # if 'onset' not in self.input_names or 'score_position' not in self.input_names:
             #     raise ValueError('This model requires onset information as input')
-            if 'onset' in self.input_names:
-                self.onset_idx = self.input_names.index('onset')
-            elif 'score_position' in self.input_names:
-                self.onset_idx = self.input_names.index('score_position')
+            if "onset" in self.input_names:
+                self.onset_idx = self.input_names.index("onset")
+            elif "score_position" in self.input_names:
+                self.onset_idx = self.input_names.index("score_position")
             else:
-                raise ValueError('This model requires onset information as input')
+                raise ValueError("This model requires onset information as input")
 
     @abstractmethod
     def __call__(self, *args, **kwargs):
@@ -200,9 +219,9 @@ class PredictiveModel(ABC):
             mx = x.type(self.dtype).to(self.device)
 
         transpose_batch = False
-        if hasattr(self, 'batch_first'):
+        if hasattr(self, "batch_first"):
             if not self.batch_first:
-                print('transpose')
+                print("transpose")
                 mx = mx.transpose(0, 1)
                 transpose_batch = True
         # model predictions
@@ -210,8 +229,6 @@ class PredictiveModel(ABC):
 
         if transpose_batch:
             predictions = predictions.transpose(0, 1)
-
-        
 
         # predictions as numpy array
         if isinstance(predictions, torch.Tensor):
@@ -222,15 +239,15 @@ class PredictiveModel(ABC):
 
         # Output as structured array
         if predictions.ndim < 3:
-            output = np.zeros(len(predictions),
-                              dtype=[(pn, 'f4') for pn in self.output_names])
+            output = np.zeros(
+                len(predictions), dtype=[(pn, "f4") for pn in self.output_names]
+            )
             for i, pn in enumerate(self.output_names):
                 output[pn] = predictions[:, i]
         else:
             output = []
             for p in predictions:
-                out = np.zeros(len(p),
-                               dtype=[(pn, 'f4') for pn in self.output_names])
+                out = np.zeros(len(p), dtype=[(pn, "f4") for pn in self.output_names])
                 for i, pn in enumerate(self.output_names):
                     out[pn] = p[:, i]
                 output.append(out)
@@ -244,27 +261,31 @@ class NNModel(nn.Module, PredictiveModel):
     Base model for Neural Network Models
     """
 
-    def __init__(self, input_names=None,
-                 output_names=None,
-                 input_type=None,
-                 dtype=torch.float32,
-                 device=None,
-                 is_rnn=False,
-                 requires_onset_info=False):
+    def __init__(
+        self,
+        input_names=None,
+        output_names=None,
+        input_type=None,
+        dtype=torch.float32,
+        device=None,
+        is_rnn=False,
+        requires_onset_info=False,
+    ):
         nn.Module.__init__(self)
-        PredictiveModel.__init__(self,
-                                 input_names=input_names,
-                                 output_names=output_names,
-                                 is_rnn=is_rnn,
-                                 input_type=input_type,
-                                 requires_onset_info=requires_onset_info)
+        PredictiveModel.__init__(
+            self,
+            input_names=input_names,
+            output_names=output_names,
+            is_rnn=is_rnn,
+            input_type=input_type,
+            requires_onset_info=requires_onset_info,
+        )
         self.dtype = dtype
-        self.device = device if device is not None else torch.device('cpu')
-        self.to(self.device)
-        self.register_buffer('in_mean', torch.zeros(len(input_names)))
-        self.register_buffer('in_std', torch.ones(len(input_names)))
-        self.register_buffer('out_mean', torch.zeros(len(output_names)))
-        self.register_buffer('out_std', torch.ones(len(output_names)))
+        self.to(device)
+        self.register_buffer("in_mean", torch.zeros(len(input_names)))
+        self.register_buffer("in_std", torch.ones(len(input_names)))
+        self.register_buffer("out_mean", torch.zeros(len(output_names)))
+        self.register_buffer("out_std", torch.ones(len(output_names)))
 
     @property
     def dtype(self):
@@ -274,3 +295,11 @@ class NNModel(nn.Module, PredictiveModel):
     def dtype(self, dtype):
         self._dtype = dtype
         self.type(dtype)
+
+    def to(self, *args, **kwargs):
+        result = super().to(*args, **kwargs)
+        try:
+            self.device = next(result.parameters()).device
+        except StopIteration:
+            pass  # needn't update device if we have no params
+        return result

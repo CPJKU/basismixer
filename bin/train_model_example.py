@@ -7,14 +7,12 @@ import os
 
 import numpy as np
 import torch
-
-from torch.utils.data.sampler import SubsetRandomSampler
 from torch.utils.data import DataLoader, ConcatDataset
 
 logging.basicConfig(level=logging.INFO)
 
 from basismixer.predictive_models import construct_model, SupervisedTrainer, MSELoss
-from basismixer.utils import load_pyc_bz, save_pyc_bz
+from basismixer.utils import load_pyc_bz, save_pyc_bz, split_datasets_by_piece
 from basismixer import make_datasets
 
 LOGGER = logging.getLogger(__name__)
@@ -23,23 +21,29 @@ LOGGER = logging.getLogger(__name__)
 #     W = np.array([n.midi_pitch for n in part.notes_tied]).astype(np.float)
 #     return W.reshape((-1, 1)), ['my']
 
+basis_features = [
+    "polynomial_pitch_feature",
+    "duration_feature",
+    "metrical_strength_feature",
+]
+
 CONFIG = [
     dict(
         onsetwise=False,
         basis_functions=[
-            "polynomial_pitch_basis",
-            "loudness_direction_basis",
-            "tempo_direction_basis",
-            "articulation_basis",
-            "duration_basis",
+            "polynomial_pitch_feature",
+            # "loudness_direction_feature",
+            # "tempo_direction_feature",
+            "articulation_feature",
+            "duration_feature",
             # my_basis,
-            "grace_basis",
-            "slur_basis",
-            "fermata_basis",
-            # 'metrical_basis'
-            "metrical_strength_basis",
-            "time_signature_basis",
-            "relative_score_position_basis",
+            # "grace_feature",
+            # "slur_feature",
+            "fermata_feature",
+            # 'metrical_feature'
+            "metrical_strength_feature",
+            "time_signature_feature",
+            "relative_score_position_feature",
         ],
         parameter_names=["velocity_dev", "timing", "articulation_log"],
         seq_len=1,
@@ -49,33 +53,33 @@ CONFIG = [
         ),
         train_args=dict(
             optimizer=["Adam", dict(lr=1e-4)],
-            epochs=10,
+            epochs=100,
             save_freq=10,
-            early_stopping=100,
+            early_stopping=10,
             batch_size=1000,
         ),
     ),
     dict(
         onsetwise=True,
         basis_functions=[
-            "polynomial_pitch_basis",
-            "loudness_direction_basis",
-            "tempo_direction_basis",
-            "articulation_basis",
-            "duration_basis",
-            "slur_basis",
-            "grace_basis",
-            "fermata_basis",
-            # 'metrical_basis'
-            "metrical_strength_basis",
-            "time_signature_basis",
-            "relative_score_position_basis",
+            "polynomial_pitch_feature",
+            # "loudness_direction_feature",
+            # "tempo_direction_feature",
+            # "articulation_feature",
+            "duration_feature",
+            # "slur_feature",
+            # "grace_feature",
+            "fermata_feature",
+            # 'metrical_feature'
+            "metrical_strength_feature",
+            "time_signature_feature",
+            "relative_score_position_feature",
         ],
         parameter_names=[
             "velocity_trend",
-            "beat_period_standardized",
-            "beat_period_mean",
-            "beat_period_std",
+            "beat_period_ratio_log",
+            # "beat_period_mean",
+            # "beat_period_std",
         ],
         seq_len=100,
         model=dict(
@@ -86,7 +90,7 @@ CONFIG = [
             optimizer=["Adam", dict(lr=1e-4)],
             epochs=10,
             save_freq=5,
-            early_stopping=100,
+            early_stopping=10,
             batch_size=50,
         ),
     ),
@@ -107,25 +111,30 @@ def jsonize_dict(input_dict):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a Model given a dataset")
-    parser.add_argument("xmlfolder", help="Folder with MusicXML files")
-    parser.add_argument("matchfolder", help="Folder with match files")
     parser.add_argument(
-        "--datasets",
+        "dataset_name",
+        choices=["asap", "4x22", "magaloff"],
+        help="Folder with MusicXML files",
+    )
+    parser.add_argument("dataset_root_folder", help="Root folder of the dataset")
+    parser.add_argument(
+        "--cache",
         help=(
             "Path to pickled datasets file. If specified and the file exists, "
-            "the `xmlfolder` and `matchfolder` options will be ignored, and it "
-            "will be assumed that datasets in the specified file correspond to "
-            "the model configuration. If specifed and the path does not exist, "
-            "the datasets are computed and saved to the specified path."
+            "and the cached data matches the model specs"  # <---todo
+            "the `dataset_root_folder` option will be ignored"
         ),
     )
     parser.add_argument(
-        "--quirks",
-        action="store_true",
-        help="Use this option when training on magaloff/zeilinger",
+        "--pieces",
+        help="Text file with valid pieces",
+        default=None,
     )
-    parser.add_argument("--pieces", help="Text file with valid pieces", default=None)
-    parser.add_argument("--model-config", help="Model configuration", default=CONFIG)
+    parser.add_argument(
+        "--model-config",
+        help="Model configuration",
+        default=CONFIG,
+    )
     parser.add_argument("--out-dir", help="Output directory", default="/tmp")
     args = parser.parse_args()
 
@@ -153,39 +162,30 @@ if __name__ == "__main__":
     datasets = []
     models = []
     target_idxs = []
-    input_idxs = []
-    valid_size = 0.20
 
-    if args.datasets and os.path.exists(args.datasets):
-        LOGGER.info("Loading data from {}".format(args.datasets))
-        datasets = load_pyc_bz(args.datasets)
+    if args.cache and os.path.exists(args.cache):
+        LOGGER.info("Loading data from {}".format(args.cache))
+        datasets = load_pyc_bz(args.cache)
     else:
         datasets = make_datasets(
             model_config,
-            args.xmlfolder,
-            args.matchfolder,
-            pieces=args.pieces,
-            quirks=args.quirks,
+            args.dataset_root_folder,
+            args.dataset_name,
+            valid_pieces=args.pieces,
         )
-        if args.datasets:
-            LOGGER.info("Saving data to {}".format(args.datasets))
-            save_pyc_bz(datasets, args.datasets)
+        if args.cache:
+            LOGGER.info("Saving data to {}".format(args.cache))
+            save_pyc_bz(datasets, args.cache)
 
     for (mdatasets, in_names, out_names), config in zip(datasets, model_config):
         dataset = ConcatDataset(mdatasets)
         batch_size = config["train_args"].pop("batch_size")
 
         #### Create train and validation data loaders #####
-        dataset_idx = np.arange(len(dataset))
-        rng.shuffle(dataset_idx)
-        len_valid = int(np.round(len(dataset) * valid_size))
-        valid_idx = dataset_idx[0:len_valid]
-        train_idx = dataset_idx[len_valid:]
-
-        train_sampler = SubsetRandomSampler(train_idx)
-        valid_sampler = SubsetRandomSampler(valid_idx)
-        train_loader = DataLoader(dataset, batch_size=batch_size, sampler=train_sampler)
-        valid_loader = DataLoader(dataset, batch_size=batch_size, sampler=valid_sampler)
+        train_set, test_set = split_datasets_by_piece(mdatasets, 0, 5, False)
+        train_loader, valid_loader = DataLoader(
+            train_set, batch_size=batch_size
+        ), DataLoader(test_set, batch_size=batch_size)
 
         #### Construct Models ####
 
@@ -218,8 +218,10 @@ if __name__ == "__main__":
         ### Construct the optimizer ####
         optim_name, optim_args = config["train_args"]["optimizer"]
         optim = getattr(torch.optim, optim_name)
-        config["train_args"]["optimizer"] = optim(model.parameters(),
-                                                  **optim_args)
+        config["train_args"]["optimizer"] = optim(
+            model.parameters(),
+            **optim_args,
+        )
 
         trainer = SupervisedTrainer(
             model=model,
@@ -228,7 +230,7 @@ if __name__ == "__main__":
             train_dataloader=train_loader,
             valid_dataloader=valid_loader,
             out_dir=model_out_dir,
-            **config["train_args"]
+            **config["train_args"],
         )
 
         trainer.train()

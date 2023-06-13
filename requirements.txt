@@ -3,4 +3,4 @@ scipy>=1.2
 numpy>=1.16
 torch>=1.3
 tqdm>=4.43
-git+https://github.com/OFAI/partitura.git@develop
+git+https://github.com/OFAI/partitura.git@main
