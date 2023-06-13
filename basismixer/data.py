@@ -196,7 +196,7 @@ def make_datasets(
                 if pf[0] not in valid_pieces:
                     print(f"{pf[0]} is not in valid_pieces")
                     continue
-                
+
                 if "chopin_op35_Mv3" in pf[0]:  # todo: repair loading, do not filter...
                     continue
                 piece_performances.append(
@@ -356,12 +356,19 @@ class BasisMixerDataSet(Dataset):
     """
 
     def __init__(
-        self, basis, idx, n_basis, targets, seq_len=1, name=None, perf_name=None
+        self,
+        basis,
+        idx,
+        n_basis,
+        targets,
+        seq_len=1,
+        name=None,
+        perf_name=None,
     ):
-        self.basis = basis
+        self.basis = basis.astype(np.float32)
         self.idx = idx
         self.n_basis = n_basis
-        self.targets = targets
+        self.targets = targets.astype(np.float32)
         self.seq_len = seq_len
         self.name = name
         self.perf_name = perf_name

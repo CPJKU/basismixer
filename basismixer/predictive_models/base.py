@@ -49,9 +49,12 @@ def set_params(m, params):
     m.load_state_dict(params)
 
 
-def construct_model(arch_spec, params=None):
+def construct_model(arch_spec, params=None, device=None):
     constructor = get_object_from_location(*arch_spec["constructor"])
     m = constructor(**arch_spec["args"])
+
+    if device:
+        m.device = device
 
     if params:
         set_params(m, params)
@@ -286,6 +289,16 @@ class NNModel(nn.Module, PredictiveModel):
         self.register_buffer("in_std", torch.ones(len(input_names)))
         self.register_buffer("out_mean", torch.zeros(len(output_names)))
         self.register_buffer("out_std", torch.ones(len(output_names)))
+
+        if device is None:
+            if torch.cuda.is_available():
+                self.device = torch.device("cuda")
+            elif torch.backends.mps.is_available():
+                self.device = torch.device("mps")
+            else:
+                self.device = torch.device("cpu")
+
+        print("torch device is", self.device)
 
     @property
     def dtype(self):

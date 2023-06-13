@@ -22,6 +22,7 @@ from partitura.score import (
     expand_grace_notes,
     unfold_part_maximal,
     remove_grace_notes,
+    merge_parts,
 )
 from partitura.musicanalysis import make_note_feats
 
@@ -40,6 +41,8 @@ from basismixer.utils import (
 
 logging.basicConfig(level=logging.INFO)
 import sys
+import warnings
+warnings.filterwarnings("ignore")
 
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.StreamHandler(sys.stdout))
@@ -75,7 +78,7 @@ def load_model(model_config, default_values=DEFAULT_VALUES):
         # Load the parameters
         params = torch.load(par, map_location=torch.device("cpu"))["state_dict"]
         # Construct the model according to its configuration and set the parameters
-        model = construct_model(model_config, params)
+        model = construct_model(model_config, params, device=torch.device("cpu"))
         # append the model to the list of models
         models.append(model)
 
@@ -143,7 +146,7 @@ def compute_basis_from_score(score_fn, input_names):
         A `Part` object representing the score.
     """
     # Load score
-    part = load_score(score_fn)
+    part = merge_parts(load_score(score_fn))
     # Delete grace notes
     remove_grace_notes(part)
     # Expand grace notes
@@ -264,7 +267,9 @@ if __name__ == "__main__":
 
     # Predict performance
     preds, model, part = predict(
-        model_config=model_config, score_fn=args.score_fn, default_values=default_values
+        model_config=model_config,
+        score_fn=args.score_fn,
+        default_values=default_values,
     )
     # Post process predictions
     post_process_predictions(preds, render_config)
@@ -272,7 +277,9 @@ if __name__ == "__main__":
     # decode predictions
     perf_codec = get_performance_codec(model.output_names)
     predicted_ppart = perf_codec.decode(
-        part=part, parameters=preds, return_alignment=args.save_match
+        part=part,
+        parameters=preds,
+        return_alignment=args.save_match,
     )
 
     if args.save_match:
@@ -287,8 +294,8 @@ if __name__ == "__main__":
     if args.save_match:
         save_match(
             alignment=alignment,
-            ppart=predicted_ppart,
-            spart=part,
+            performance_data=predicted_ppart,
+            score_data=part,
             out=args.midi_fn.replace(".mid", ".match"),
             piece=os.path.basename(args.score_fn),
             performer="Basis Mixer",

@@ -109,6 +109,41 @@ def jsonize_dict(input_dict):
     return out_dict
 
 
+def write_executable_render(rendering_config, out_dir):
+
+    rendering_config_path = os.path.join(out_dir, "config_for_rendering.json")
+    # Write rendering config
+    json.dump(
+        rendering_config,
+        open(rendering_config_path, "w"),
+    )
+
+    script_lines = [
+        "#!/bin/bash\n",
+        "# Path to the script",
+        'scd="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"\n',
+        "# Set score_fn variable",
+        'score_fn="$1"\n',
+        "# Set midi_fn variable",
+        'midi_fn="$2"',
+        'if [ -z "$midi_fn" ]; then',
+        '\tmidi_fn="${scd}/$(basename ${score_fn}).mid"',
+        "fi\n",
+        f'model_config="{os.path.abspath(rendering_config_path)}"\n',
+        'BasisMixerRender "${score_fn}" "${midi_fn}" \\',
+        '\t--model-config "${model_config}"',
+    ]
+
+    script = "\n".join(script_lines)
+
+    script_fn = os.path.join(out_dir, "rendering_script.sh")
+    with open(script_fn, "w") as f:
+        f.write(script)
+
+    # make script executable
+    os.chmod(script_fn, 0o755)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a Model given a dataset")
     parser.add_argument(
@@ -177,6 +212,7 @@ if __name__ == "__main__":
             LOGGER.info("Saving data to {}".format(args.cache))
             save_pyc_bz(datasets, args.cache)
 
+    rendering_config = []
     for (mdatasets, in_names, out_names), config in zip(datasets, model_config):
         dataset = ConcatDataset(mdatasets)
         batch_size = config["train_args"].pop("batch_size")
@@ -211,7 +247,15 @@ if __name__ == "__main__":
             open(os.path.join(model_out_dir, "config.json"), "w"),
             indent=2,
         )
-        model = construct_model(model_cfg)
+
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+        elif torch.backends.mps.is_available():
+            device = torch.device("mps")
+        else:
+            device = torch.device("cpu")
+
+        model = construct_model(model_cfg, device=device)
 
         loss = MSELoss()
 
@@ -234,3 +278,12 @@ if __name__ == "__main__":
         )
 
         trainer.train()
+
+        rendering_config.append(
+            [
+                os.path.join(model_out_dir, "config.json"),
+                os.path.join(model_out_dir, "best_model.pth"),
+            ]
+        )
+
+    write_executable_render(rendering_config, args.out_dir)

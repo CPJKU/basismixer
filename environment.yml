@@ -6,7 +6,9 @@ channels:
 
 dependencies:
   - python=3.9
-  - pytorch
+  - pytorch::pytorch
+  - torchvision
+  - torchaudio
   - numpy
   - scipy
   - matplotlib
@@ -19,3 +21,4 @@ dependencies:
     - appdirs
     - soundfile
     - partitura
+    - pandas_ods_reader
