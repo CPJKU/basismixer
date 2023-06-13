@@ -32,13 +32,13 @@ CONFIG = [
         onsetwise=False,
         basis_functions=[
             "polynomial_pitch_feature",
-            "loudness_direction_feature",
-            "tempo_direction_feature",
+            # "loudness_direction_feature",
+            # "tempo_direction_feature",
             "articulation_feature",
             "duration_feature",
             # my_basis,
-            "grace_feature",
-            "slur_feature",
+            # "grace_feature",
+            # "slur_feature",
             "fermata_feature",
             # 'metrical_feature'
             "metrical_strength_feature",
@@ -53,9 +53,9 @@ CONFIG = [
         ),
         train_args=dict(
             optimizer=["Adam", dict(lr=1e-4)],
-            epochs=10,
+            epochs=100,
             save_freq=10,
-            early_stopping=100,
+            early_stopping=10,
             batch_size=1000,
         ),
     ),
@@ -63,12 +63,12 @@ CONFIG = [
         onsetwise=True,
         basis_functions=[
             "polynomial_pitch_feature",
-            "loudness_direction_feature",
-            "tempo_direction_feature",
-            "articulation_feature",
+            # "loudness_direction_feature",
+            # "tempo_direction_feature",
+            # "articulation_feature",
             "duration_feature",
-            "slur_feature",
-            "grace_feature",
+            # "slur_feature",
+            # "grace_feature",
             "fermata_feature",
             # 'metrical_feature'
             "metrical_strength_feature",
@@ -77,9 +77,9 @@ CONFIG = [
         ],
         parameter_names=[
             "velocity_trend",
-            "beat_period_standardized",
-            "beat_period_mean",
-            "beat_period_std",
+            "beat_period_ratio_log",
+            # "beat_period_mean",
+            # "beat_period_std",
         ],
         seq_len=100,
         model=dict(
@@ -90,7 +90,7 @@ CONFIG = [
             optimizer=["Adam", dict(lr=1e-4)],
             epochs=10,
             save_freq=5,
-            early_stopping=100,
+            early_stopping=10,
             batch_size=50,
         ),
     ),
@@ -168,7 +168,10 @@ if __name__ == "__main__":
         datasets = load_pyc_bz(args.cache)
     else:
         datasets = make_datasets(
-            model_config, args.dataset_root_folder, args.dataset_name
+            model_config,
+            args.dataset_root_folder,
+            args.dataset_name,
+            valid_pieces=args.pieces,
         )
         if args.cache:
             LOGGER.info("Saving data to {}".format(args.cache))
@@ -215,7 +218,10 @@ if __name__ == "__main__":
         ### Construct the optimizer ####
         optim_name, optim_args = config["train_args"]["optimizer"]
         optim = getattr(torch.optim, optim_name)
-        config["train_args"]["optimizer"] = optim(model.parameters(), **optim_args)
+        config["train_args"]["optimizer"] = optim(
+            model.parameters(),
+            **optim_args,
+        )
 
         trainer = SupervisedTrainer(
             model=model,
@@ -224,7 +230,7 @@ if __name__ == "__main__":
             train_dataloader=train_loader,
             valid_dataloader=valid_loader,
             out_dir=model_out_dir,
-            **config["train_args"]
+            **config["train_args"],
         )
 
         trainer.train()

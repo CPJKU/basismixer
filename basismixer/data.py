@@ -139,7 +139,13 @@ def filter_blocklist(pieces):
     return pieces_filtered
 
 
-def make_datasets(model_specs, root_folder, dataset_name, gracenotes="remove"):
+def make_datasets(
+    model_specs,
+    root_folder,
+    dataset_name,
+    gracenotes="remove",
+    valid_pieces=None,
+):
     assert dataset_name in ["4x22", "magaloff", "asap"]
 
     quirks = dataset_name == "magaloff"
@@ -172,16 +178,25 @@ def make_datasets(model_specs, root_folder, dataset_name, gracenotes="remove"):
             ]
             piece_performances = zip(pieces, performances)
         else:
-            mxml_folder = root_folder + (
-                "xml" if dataset_name == "magaloff" else "musicxml"
+            mxml_folder = os.path.join(
+                root_folder,
+                "xml" if dataset_name == "magaloff" else "musicxml",
             )
-            match_folder = root_folder + "match"
+            match_folder = os.path.join(root_folder, "match")
             folders = dict(mxml=mxml_folder, match=match_folder)
             paired_files = pair_files(folders, by_prefix=not quirks)
             piece_performances = (
                 []
             )  # [(pf['mxml'][0], list(pf['match'])) for pf in paired_files]
+
+            if valid_pieces is None:
+                valid_pieces = np.array(list(paired_files.keys()))
             for pf in paired_files.items():
+
+                if pf[0] not in valid_pieces:
+                    print(f"{pf[0]} is not in valid_pieces")
+                    continue
+                
                 if "chopin_op35_Mv3" in pf[0]:  # todo: repair loading, do not filter...
                     continue
                 piece_performances.append(

@@ -251,7 +251,7 @@ def tempo_by_average(score_onsets, performed_onsets,
     # Get unique onsets if no provided
     if unique_onset_idxs is None:
         # Get indices of the unique onsets (quantize score onsets)
-        unique_onset_idxs = get_unique_onset_idxs((1e4 * score_onsets).astype(np.int))
+        unique_onset_idxs = get_unique_onset_idxs((1e4 * score_onsets).astype(int))
 
     # Get score information
     score_info = get_unique_seq(onsets=score_onsets,
@@ -349,7 +349,7 @@ def tempo_by_derivative(score_onsets, performed_onsets,
     # Get unique onsets if no provided
     if unique_onset_idxs is None:
         # Get indices of the unique onsets (quantize score onsets)
-        unique_onset_idxs = get_unique_onset_idxs((1e4 * score_onsets).astype(np.int))
+        unique_onset_idxs = get_unique_onset_idxs((1e4 * score_onsets).astype(int))
 
     # Get score information
     score_info = get_unique_seq(onsets=score_onsets,
@@ -742,7 +742,7 @@ def monotonize_times(s, strict=True, deltas=None, return_interp_seq=False):
         _deltas = np.r_[np.min(deltas) - eps, deltas, np.max(deltas) + eps]
     else:
         _deltas = None
-    mask = np.ones(_s.shape[0], dtype=np.bool)
+    mask = np.ones(_s.shape[0], dtype=bool)
     monotonic_mask = _monotonize_times(_s, mask, strict, _deltas)[1:-1]  # is the mask always changed in place?
     mask[0] = mask[-1] = False
     # s_mono = interp1d(idx[mask], _s[mask])(idx[1:-1])
