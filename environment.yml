@@ -5,7 +5,7 @@ channels:
   - pytorch
 
 dependencies:
-  - python=3.7
+  - python=3.9
   - pytorch
   - numpy
   - scipy
@@ -18,5 +18,4 @@ dependencies:
   - pip:
     - appdirs
     - soundfile
-    - git+https://github.com/OFAI/partitura.git@main
-    - git+https://github.com/OFAI/basismixer.git@asap
+    - partitura

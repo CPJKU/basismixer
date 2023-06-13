@@ -134,7 +134,8 @@ def split_datasets_by_piece(datasets, fold=0, folds=5, dataset_name='magaloff'):
     from partitura.utils import partition
     from pandas_ods_reader import read_ods
 
-    if dataset_name != 'asap':
+    if dataset_name == 'asap':
+        # This does not seem to work...
         ods = read_ods("../basismixer/assets/perfwise_insertions_deletions.ods")
 
         relevant = ods.values[:, :2]

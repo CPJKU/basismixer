@@ -11,14 +11,13 @@ from torch.utils.data import Dataset, ConcatDataset
 
 from partitura import load_musicxml, load_match
 from partitura.score import expand_grace_notes
-from basismixer.utils import (pair_files,
-                              get_unique_onset_idxs,
-                              notewise_to_onsetwise)
+from basismixer.utils import pair_files, get_unique_onset_idxs, notewise_to_onsetwise
 from basismixer.performance_codec import get_performance_codec
 from .parse_tsv_alignment import load_alignment_from_ASAP
 from partitura.performance import PerformedPart
 from pathlib import Path
 from multiprocessing import Pool
+
 LOGGER = logging.getLogger(__name__)
 
 from partitura.score import GraceNote, Note
@@ -38,47 +37,53 @@ def remove_grace_notes(part):
     for gn in list(part.iter_all(GraceNote)):
         for n in list(part.iter_all(Note)):
             if n.tie_next == gn:
-               n.tie_next = None
+                n.tie_next = None
         part.remove(gn)
 
 
-def process_piece(piece_performances, perf_codec, all_basis_functions, gracenotes, dataset_name):
+def process_piece(
+    piece_performances, perf_codec, all_basis_functions, gracenotes, dataset_name
+):
     piece, performances = piece_performances
     data = []
     quirks = False
-    if dataset_name == 'asap':
-        name = '/'.join(str(piece).split('asap')[1].split('/')[1:-1])
+    if dataset_name == "asap":
+        name = "/".join(str(piece).split("asap")[1].split("/")[1:-1])
     else:
-        name = piece.split('/')[-1].split('.')[0]
-        #quirks = True
+        name = piece.split("/")[-1].split(".")[0]
+        # quirks = True
 
-    LOGGER.info('Processing {}'.format(piece))
+    LOGGER.info("Processing {}".format(piece))
 
     part = load_musicxml(piece)
     part = partitura.score.merge_parts(part)
-    part = partitura.score.unfold_part_maximal(part, update_ids=dataset_name != '4x22')
+    part = partitura.score.unfold_part_maximal(part, update_ids=dataset_name != "4x22")
     bm = part.beat_map
 
     # get indices of the unique onsets
-    if gracenotes == 'remove':
+    if gracenotes == "remove":
         # Remove grace notes
         remove_grace_notes(part)
     else:
         # expand grace note durations (necessary for correct computation of
         # targets)
         expand_grace_notes(part)
-    basis, bf_names = partitura.musicanalysis.make_note_feats(part, list(all_basis_functions))
+    basis, bf_names = partitura.musicanalysis.make_note_feats(
+        part, list(all_basis_functions)
+    )
 
     nid_dict = dict((n.id, i) for i, n in enumerate(part.notes_tied))
 
     for performance in performances:
-        if dataset_name == 'asap':
+        if dataset_name == "asap":
             alignment = load_alignment_from_ASAP(performance)
-            ppart = partitura.load_performance_midi(str(performance).split("_note_alignments/")[0] + ".mid")
+            ppart = partitura.load_performance_midi(
+                str(performance).split("_note_alignments/")[0] + ".mid"
+            )
         else:
             ppart, alignment = load_match(performance, first_note_at_zero=True)
 
-            #if quirks: todo: check if quirks are really needed
+            # if quirks: todo: check if quirks are really needed
             #    for n in alignment:
             #        if n['label'] == 'match':
             #            n['score_id'] = n['score_id'].split('-')[0]
@@ -95,9 +100,18 @@ def process_piece(piece_performances, perf_codec, all_basis_functions, gracenote
         score_onsets = bm([n.start.t for n in part.notes_tied])[matched_subset_idxs]
         unique_onset_idxs = get_unique_onset_idxs(score_onsets)
 
-        performance_name = str(performance).split('/')[-2]
+        performance_name = str(performance).split("/")[-2]
 
-        data.append((basis_matched, bf_names, targets, unique_onset_idxs, name, performance_name))
+        data.append(
+            (
+                basis_matched,
+                bf_names,
+                targets,
+                unique_onset_idxs,
+                name,
+                performance_name,
+            )
+        )
     return data
 
 
@@ -110,7 +124,9 @@ class ProcessPiece:
 
 
 def filter_blocklist(pieces):
-    blocklist = ['Liszt/Sonata', ]
+    blocklist = [
+        "Liszt/Sonata",
+    ]
     pieces_filtered = []
     for p in pieces:
         flag = True
@@ -123,54 +139,97 @@ def filter_blocklist(pieces):
     return pieces_filtered
 
 
-def make_datasets(model_specs, root_folder, dataset_name, gracenotes='remove'):
-    assert dataset_name in ['4x22', 'magaloff', 'asap']
+def make_datasets(
+    model_specs,
+    root_folder,
+    dataset_name,
+    gracenotes="remove",
+    valid_pieces=None,
+):
+    assert dataset_name in ["4x22", "magaloff", "asap"]
 
-    quirks = dataset_name == 'magaloff'
+    quirks = dataset_name == "magaloff"
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        all_targets = list(set([n for model_spec in model_specs
-                                for n in model_spec['parameter_names']]))
+        all_targets = list(
+            set(
+                [n for model_spec in model_specs for n in model_spec["parameter_names"]]
+            )
+        )
 
         perf_codec = get_performance_codec(all_targets)
 
         bf_idx_map = {}
 
-        all_basis_functions = set([n for model_spec in model_specs
-                                   for n in model_spec['basis_functions']])
+        all_basis_functions = set(
+            [n for model_spec in model_specs for n in model_spec["basis_functions"]]
+        )
 
-        if dataset_name == 'asap':#todo: fix loading of Liszt/Sonata
-            assert 'asap' in root_folder.split('/')[-1], 'Root folder name must contain "asap"'
+        if dataset_name == "asap":  # todo: fix loading of Liszt/Sonata
+            assert (
+                "asap" in root_folder.split("/")[-1]
+            ), 'Root folder name must contain "asap"'
             pieces = list(Path(root_folder).rglob("*/xml_score.musicxml"))
             pieces = filter_blocklist(pieces)
-            performances = [list(Path(piece).parent.glob("*_note_alignments/note_alignment.tsv")) for piece in pieces]
+            performances = [
+                list(Path(piece).parent.glob("*_note_alignments/note_alignment.tsv"))
+                for piece in pieces
+            ]
             piece_performances = zip(pieces, performances)
         else:
-            mxml_folder = root_folder + ('xml' if dataset_name == 'magaloff' else 'musicxml')
-            match_folder = root_folder + 'match'
+            mxml_folder = os.path.join(
+                root_folder,
+                "xml" if dataset_name == "magaloff" else "musicxml",
+            )
+            match_folder = os.path.join(root_folder, "match")
             folders = dict(mxml=mxml_folder, match=match_folder)
             paired_files = pair_files(folders, by_prefix=not quirks)
-            piece_performances = []#[(pf['mxml'][0], list(pf['match'])) for pf in paired_files]
+            piece_performances = (
+                []
+            )  # [(pf['mxml'][0], list(pf['match'])) for pf in paired_files]
+
+            if valid_pieces is None:
+                valid_pieces = np.array(list(paired_files.keys()))
             for pf in paired_files.items():
-                if 'chopin_op35_Mv3' in pf[0]:#todo: repair loading, do not filter...
+
+                if pf[0] not in valid_pieces:
+                    print(f"{pf[0]} is not in valid_pieces")
                     continue
-                piece_performances.append((list(pf[1]['mxml'])[0], list(pf[1]['match'])))
-
-
-
+                
+                if "chopin_op35_Mv3" in pf[0]:  # todo: repair loading, do not filter...
+                    continue
+                piece_performances.append(
+                    (list(pf[1]["mxml"])[0], list(pf[1]["match"]))
+                )
 
         N_PROC = 1
         pool = Pool(N_PROC)
         if N_PROC > 1:
-            pieces = list(pool.map(ProcessPiece((root_folder, perf_codec, all_basis_functions, gracenotes)), piece_performances))
+            pieces = list(
+                pool.map(
+                    ProcessPiece(
+                        (root_folder, perf_codec, all_basis_functions, gracenotes)
+                    ),
+                    piece_performances,
+                )
+            )
         else:
-            pieces = [process_piece(p, perf_codec, all_basis_functions, gracenotes, dataset_name) for p in piece_performances]
+            pieces = [
+                process_piece(
+                    p, perf_codec, all_basis_functions, gracenotes, dataset_name
+                )
+                for p in piece_performances
+            ]
         pieces = [list(i) for sublist in pieces for i in sublist]
 
         for piece in pieces:
-            bf_idx = np.array([bf_idx_map.setdefault(name, len(bf_idx_map))
-                               for i, name in enumerate(piece[1])])
+            bf_idx = np.array(
+                [
+                    bf_idx_map.setdefault(name, len(bf_idx_map))
+                    for i, name in enumerate(piece[1])
+                ]
+            )
             piece[1] = bf_idx
 
         data = [tuple(l) for l in pieces]
@@ -186,20 +245,21 @@ def piece_data_to_datasets(data, bf_idx_map, model_specs):
     # print(bf_idx_inv_map)
     input_names = np.array([idx_bf_map[i] for i in range(len(idx_bf_map))])
 
-    input_basis = np.array([n.split('.', 1)[0] for n in input_names])
+    input_basis = np.array([n.split(".", 1)[0] for n in input_names])
 
     dataset_per_model = []
     input_names_per_model = []
     output_names_per_model = []
     for m_spec in model_specs:
         # the global indices of the basis functions that this model needs
-        model_idx = np.concatenate([np.where(input_basis == n)[0]
-                                    for n in m_spec['basis_functions']])
+        model_idx = np.concatenate(
+            [np.where(input_basis == n)[0] for n in m_spec["basis_functions"]]
+        )
         # trg_idx = np.array([perf_codec.parameter_names.index(n) for n in m_spec['targets']])
         n_basis = len(model_idx)
 
         input_names_per_model.append(input_names[model_idx])
-        output_names_per_model.append(m_spec['parameter_names'])
+        output_names_per_model.append(m_spec["parameter_names"])
 
         m_datasets = []
         m_input_names = []
@@ -210,20 +270,28 @@ def piece_data_to_datasets(data, bf_idx_map, model_specs):
             # the subset of basisfunctions that this model is interested in:
             useful = np.isin(idx, model_idx)
             # idx mapped to the subset of basisfunctions for this model
-            model_idx_subset = np.array([np.where(model_idx == i)[0][0]
-                                         for i in idx[useful]])
+            model_idx_subset = np.array(
+                [np.where(model_idx == i)[0][0] for i in idx[useful]]
+            )
 
             # select only the required bfs
             bf = bf[:, useful]
             # select only the required targets
-            targets = np.array([targets[n] for n in m_spec['parameter_names']]).T
+            targets = np.array([targets[n] for n in m_spec["parameter_names"]]).T
 
-            if m_spec['onsetwise']:
+            if m_spec["onsetwise"]:
                 bf = notewise_to_onsetwise(bf, uox)
                 targets = notewise_to_onsetwise(targets, uox)
 
-            ds = BasisMixerDataSet(bf, model_idx_subset, n_basis,
-                                   targets, m_spec['seq_len'], name, perf_name)
+            ds = BasisMixerDataSet(
+                bf,
+                model_idx_subset,
+                n_basis,
+                targets,
+                m_spec["seq_len"],
+                name,
+                perf_name,
+            )
 
             m_datasets.append(ds)
 
@@ -287,7 +355,9 @@ class BasisMixerDataSet(Dataset):
 
     """
 
-    def __init__(self, basis, idx, n_basis, targets, seq_len=1, name=None, perf_name=None):
+    def __init__(
+        self, basis, idx, n_basis, targets, seq_len=1, name=None, perf_name=None
+    ):
         self.basis = basis
         self.idx = idx
         self.n_basis = n_basis
@@ -319,9 +389,9 @@ class BasisMixerDataSet(Dataset):
             raise IndexError
 
         x = np.zeros((self.seq_len, self.n_basis))
-        x[:, self.idx] = self.basis[i:i + self.seq_len]
+        x[:, self.idx] = self.basis[i : i + self.seq_len]
 
-        y = self.targets[i:i + self.seq_len, :]
+        y = self.targets[i : i + self.seq_len, :]
 
         return x, y
 
