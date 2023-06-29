@@ -294,12 +294,12 @@ class NNModel(nn.Module, PredictiveModel):
         self.register_buffer("out_std", torch.ones(len(output_names)))
 
         if device is None:
-            if torch.cuda.is_available():
-                self.device = torch.device("cuda")
-            # elif torch.backends.mps.is_available():
-            #     self.device = torch.device("mps")
-            else:
-                self.device = torch.device("cpu")
+            # if torch.cuda.is_available():
+            #     self.device = torch.device("cuda")
+            # # elif torch.backends.mps.is_available():
+            # #     self.device = torch.device("mps")
+            # else:
+            self.device = torch.device("cpu")
 
         print("torch device is", self.device)
 
