@@ -100,7 +100,8 @@ def process_piece(
         score_onsets = bm([n.start.t for n in part.notes_tied])[matched_subset_idxs]
         unique_onset_idxs = get_unique_onset_idxs(score_onsets)
 
-        performance_name = str(performance).split("/")[-2]
+        # performance_name = str(performance).split("/")[-2]
+        performance_name = os.path.basename(performance)
 
         data.append(
             (
