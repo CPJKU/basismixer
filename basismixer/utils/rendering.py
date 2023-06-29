@@ -2,6 +2,7 @@
 Utilities for rendering performances
 """
 from typing import Tuple, Iterable
+from collections import defaultdict
 import numpy as np
 
 from partitura.performance import PerformedPart
@@ -122,39 +123,67 @@ def sanitize_performed_part(
 ) -> None:
     """Avoid negative durations in notes."""
 
-    note_messages = []
+    pitch_messages = defaultdict(list)
+
     for i, n in enumerate(ppart.notes):
 
-        if n["note_off"] < n["note_on"]:
-            n["note_off"] = n["note_on"]
+        pitch_messages[n["midi_pitch"]].append(n)
 
-        if n["sound_off"] < n["note_off"]:
-            n["sound_off"] = n["note_off"]
+    for pitch in pitch_messages.keys():
 
-        note_messages += [(n["note_on"], 1, i), (n["note_off"], 0, i)]
+        pitch_messages[pitch].sort(key=lambda x: x["note_on"])
 
-    note_messages = note_messages
-    note_messages.sort(key=lambda x: x[0])
+    for pitch in pitch_messages.keys():
 
-    active_notes = {}
-    for t, mt, i in note_messages:
-        note = ppart.notes[i]
-        pitch = note["midi_pitch"]
+        # prev_off = pitch_messages[pitch][0]["note_off"]
+        for i, note in enumerate(pitch_messages[pitch][1:]):
 
-        if mt == 1:
-            if pitch in active_notes:
-                # get previous sounding note
-                prev_sounding_note = ppart.notes[active_notes[pitch]]
-                # adjust sound off of the note
-                prev_sounding_note["note_off"] = t - eps
+            pitch_messages[pitch][i]["note_off"] = min(
+                note["note_on"] - eps,
+                pitch_messages[pitch][i]["note_off"],
+            )
 
-            # update current sounding note
-            active_notes[pitch] = i
+    # ppart.sustain_pedal_threshold = 127
+    # note_messages = []
+    # for i, n in enumerate(ppart.notes):
 
-        else:
-            if pitch in active_notes:
-                # If note off, remove note from active notes
-                del active_notes[pitch]
+    #     if n["note_off"] < n["note_on"]:
+    #         n["note_off"] = n["note_on"]
+
+    #     if n["sound_off"] < n["note_off"]:
+    #         n["sound_off"] = n["note_off"]
+
+    #     note_messages += [(n["note_on"], True, i), (n["sound_off"], False, i)]
+
+    # note_messages = note_messages
+    # note_messages.sort(key=lambda x: x[0])
+
+    # active_notes = {}
+    # for t, mt, i in note_messages:
+    #     note = ppart.notes[i]
+    #     pitch = note["midi_pitch"]
+
+    #     if mt:
+    #         if pitch in active_notes:
+    #             # get previous sounding note
+    #             prev_sounding_note = ppart.notes[active_notes[pitch]]
+    #             print("note", prev_sounding_note["note_off"] - t, i)
+    #             # adjust sound off of the note
+    #             prev_sounding_note["note_off"] = min(
+    #                 t - eps,
+    #                 prev_sounding_note["note_off"],
+    #             )
+    #             prev_sounding_note["sound_off"] = t - eps
+
+    #             del active_notes[pitch]
+
+    #         # update current sounding note
+    #         active_notes[pitch] = i
+
+    #     else:
+    #         if pitch in active_notes:
+    #             # If note off, remove note from active notes
+    #             del active_notes[pitch]
 
 
 def post_process_predictions(
