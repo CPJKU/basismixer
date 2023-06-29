@@ -9,13 +9,18 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, ConcatDataset
 
-logging.basicConfig(level=logging.INFO)
 
-from basismixer.predictive_models import construct_model, SupervisedTrainer, MSELoss
+from basismixer.predictive_models import (
+    construct_model,
+    SupervisedTrainer,
+    MSELoss,
+)
 from basismixer.utils import load_pyc_bz, save_pyc_bz, split_datasets_by_piece
 from basismixer import make_datasets
 
 LOGGER = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
 
 # def my_basis(part):
 #     W = np.array([n.midi_pitch for n in part.notes_tied]).astype(np.float)
@@ -53,7 +58,7 @@ CONFIG = [
         ),
         train_args=dict(
             optimizer=["Adam", dict(lr=1e-4)],
-            epochs=100,
+            epochs=1000,
             save_freq=10,
             early_stopping=10,
             batch_size=1000,
@@ -88,7 +93,7 @@ CONFIG = [
         ),
         train_args=dict(
             optimizer=["Adam", dict(lr=1e-4)],
-            epochs=10,
+            epochs=100,
             save_freq=5,
             early_stopping=10,
             batch_size=50,
@@ -116,8 +121,31 @@ def write_executable_render(rendering_config, out_dir):
     json.dump(
         rendering_config,
         open(rendering_config_path, "w"),
+        indent=4,
     )
 
+    """
+    #!/bin/bash
+
+    match=false
+
+    if [[ "$*" == *"--match"* ]]; then
+        match=true
+    fi
+
+    if [ "$match" = true ]; then
+        arg1="$1"
+        echo "${arg1}.match"
+    else
+        echo "$1"
+    fi
+
+    """
+
+    basis_mixer_executable_path = os.path.join(
+        os.path.dirname(os.path.realpath(__file__)),
+        "BasisMixerRender",
+    )
     script_lines = [
         "#!/bin/bash\n",
         "# Path to the script",
@@ -130,7 +158,7 @@ def write_executable_render(rendering_config, out_dir):
         '\tmidi_fn="${scd}/$(basename ${score_fn}).mid"',
         "fi\n",
         f'model_config="{os.path.abspath(rendering_config_path)}"\n',
-        'BasisMixerRender "${score_fn}" "${midi_fn}" \\',
+        f'python {basis_mixer_executable_path} "${{score_fn}}" "${{midi_fn}}" \\',
         '\t--model-config "${model_config}"',
     ]
 
@@ -170,7 +198,11 @@ if __name__ == "__main__":
         help="Model configuration",
         default=CONFIG,
     )
-    parser.add_argument("--out-dir", help="Output directory", default="/tmp")
+    parser.add_argument(
+        "--out-dir",
+        help="Output directory",
+        default=".",
+    )
     args = parser.parse_args()
 
     # Load model architecture
@@ -250,8 +282,8 @@ if __name__ == "__main__":
 
         if torch.cuda.is_available():
             device = torch.device("cuda")
-        elif torch.backends.mps.is_available():
-            device = torch.device("mps")
+        # elif torch.backends.mps.is_available():
+        #     device = torch.device("mps")
         else:
             device = torch.device("cpu")
 
@@ -281,8 +313,8 @@ if __name__ == "__main__":
 
         rendering_config.append(
             [
-                os.path.join(model_out_dir, "config.json"),
-                os.path.join(model_out_dir, "best_model.pth"),
+                os.path.abspath(os.path.join(model_out_dir, "config.json")),
+                os.path.abspath(os.path.join(model_out_dir, "best_model.pth")),
             ]
         )
 

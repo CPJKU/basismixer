@@ -267,10 +267,6 @@ def get_all_output_names(
         if len(best_option) > 1:
             if error_on_conflicting_names:
                 raise ValueError("Invalid combination of tempo parameters")
-
-            # if 'beat_period_mean' in names and 'beat_period_std' not in names:
-            #     tempo_params = tempo_options[2]
-
         tempo_params = tempo_options[best_option[0]]
 
     params = dynamics_params + tempo_params + ("timing", "articulation_log")

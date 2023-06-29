@@ -291,8 +291,8 @@ class NNTrainer(ABC):
 
             device = torch.device("cuda:0" if self.n_gpu > 0 else "cpu")
 
-        elif torch.backends.mps.is_available():
-            device = torch.device("mps")
+        # elif torch.backends.mps.is_available():
+        #     device = torch.device("mps")
 
         else:
             LOGGER.warning("No GPU available! Training will be performed on CPU.")

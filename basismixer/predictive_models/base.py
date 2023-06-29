@@ -30,7 +30,7 @@ def get_nonlinearity(nonlinearity):
     elif isinstance(nonlinearity, str):
         try:
             nonlinearity = getattr(nn, nonlinearity)()
-        except:
+        except Exception:
             raise ValueError("Nonlinearity not found")
     elif isinstance(nonlinearity, (list, tuple)):
         if not isinstance(nonlinearity[0], str):
@@ -53,7 +53,7 @@ def construct_model(arch_spec, params=None, device=None):
     constructor = get_object_from_location(*arch_spec["constructor"])
     m = constructor(**arch_spec["args"])
 
-    if device:
+    if device is not None:
         m.device = device
 
     if params:
@@ -133,7 +133,10 @@ class FullPredictiveModel(nn.Module):
 
             # aggregate bfs per onset
             if model.input_type == "onsetwise":
-                model_input = notewise_to_onsetwise(model_input, unique_onset_idxs)
+                model_input = notewise_to_onsetwise(
+                    model_input,
+                    unique_onset_idxs,
+                )
             # make predictions
             preds = model.predict(model_input)
 
@@ -293,8 +296,8 @@ class NNModel(nn.Module, PredictiveModel):
         if device is None:
             if torch.cuda.is_available():
                 self.device = torch.device("cuda")
-            elif torch.backends.mps.is_available():
-                self.device = torch.device("mps")
+            # elif torch.backends.mps.is_available():
+            #     self.device = torch.device("mps")
             else:
                 self.device = torch.device("cpu")
 
