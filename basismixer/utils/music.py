@@ -1,113 +1,91 @@
 """
 Music related utilities
 """
+import os
+
+from typing import Union, List
 import numpy as np
-from partitura import load_musicxml, load_score_midi, load_via_musescore
 import torch
-from partitura.score import Part
+from partitura import load_score as load_score_partitura
+
+
+from partitura.score import Score
+
+from partitura.musicanalysis.performance_codec import get_unique_onset_idxs
 
 from basismixer.utils import load_pyc_bz
 
-def load_score(score_fn):
+from partitura.utils.misc import PathLike, deprecated_alias
+
+
+@deprecated_alias(score_fn="filename")
+def load_score(filename: PathLike) -> Score:
     """
-    Load a score format supported by partitura. Currently the accepted formats are
-    MusicXML and MIDI (native Python support), plus all formats for which MuseScore
-    has support import-support (requires MuseScore 3)
+    Load a score format supported by partitura, or a partitura
+    ScoreLike object compressed in pickle format. The only difference
+    between this method and the one in partitura is that this
+    method also allows for loading a score from a compressed
+    pickled file (useful when working with large datasets).
 
     Parameters
     ----------
-    score_fn : str
-        Filename of the score to load.
+    filename : PathLike
+        Filename of the score to parse, or a file-like object.
 
     Returns
     -------
-    :class:`partitura.score.Part`
-        A score part.
+    scr: :class:`partitura.score.Score`
+        A score instance.
     """
-    part = None
-    # Load MusicXML
-    try:
-        return load_musicxml(score_fn, force_note_ids='keep')
-    except:
-        pass
-    # Load MIDI
-    try:
-        return load_score_midi(score_fn, assign_note_ids=True)
-    except:
-        pass
-    # Load MuseScore
-    try:
-        return load_via_musescore(score_fn, force_note_ids='keep')
-    except:
-        pass
-    # Load a part in compressed pickle format
-    try:
-        part = load_pyc_bz(score_fn)
-        if isinstance(part, Part):
-            return part
-        else:
-            part = None
-    except:
-        pass
-    if part is None:
-        raise ValueError('The score is not in one of the supported formats')
 
+    # Get extension of the file
+    extension = os.path.splitext(filename)[-1]
 
-def get_unique_onset_idxs(onsets, eps=1e-6, return_unique_onsets=False):
-    """
-    Get unique onsets and their indices.
-
-    Parameters
-    ----------
-    onsets : np.ndarray
-        Score onsets in beats.
-    eps : float
-        Small epsilon (for dealing with quantization in symbolic scores).
-        This is particularly useful for dealing with triplets and other
-        similar rhytmical structures that do not have a finite decimal
-        representation.
-    return_unique_onsets : bool (optional)
-        If `True`, returns the unique score onsets.
-
-    Returns
-    -------
-    unique_onset_idxs : np.ndarray
-        Indices of the unique onsets in the score.
-    unique_onsets : np.ndarray
-        Unique score onsets
-    """
-    # Do not assume that the onsets are sorted
-    # (use a stable sorting algorithm for preserving the order
-    # of elements with the same onset, which is useful e.g. if the
-    # notes within a same onset are ordered by pitch)
-    sort_idx = np.argsort(onsets, kind='mergesort')
-    split_idx = np.where(np.diff(onsets[sort_idx]) > eps)[0] + 1
-    unique_onset_idxs = np.split(sort_idx, split_idx)
-
-    if return_unique_onsets:
-        # Instead of np.unique(onsets)
-        unique_onsets = np.array([onsets[uix].mean()
-                                  for uix in unique_onset_idxs])
-
-        return unique_onset_idxs, unique_onsets
+    if extension in (".pyc.bz", ".bz", ".pyc"):
+        score = load_pyc_bz(filename)
     else:
-        return unique_onset_idxs
+        score = load_score_partitura(filename=filename)
+
+    return score
 
 
-def notewise_to_onsetwise(notewise_inputs, unique_onset_idxs):
-    """Agregate basis functions per onset
+def notewise_to_onsetwise(
+    notewise_inputs: Union[np.ndarray, torch.Tensor],
+    unique_onset_idxs: List[np.ndarray],
+) -> Union[np.ndarray, torch.Tensor]:
+    """
+    Agregate basis functions per onset
+
+    Parameters
+    ----------
+    notewise_inputs : np.ndarray or torch.Tensor
+        An array of notewise inputs (basis functions). This array
+        has a shape (number_of_notes, number_of_basis_functions)
+    unique_onset_idxs: list of np.ndarrays
+        A list of the indices of the unique onsets. The lenght
+        of the list is number_of_unique_onsets
+
+    Returns
+    -------
+    onsetwise_inputs : np.ndarray or torch.Tensor
+        The inputs aggregated by onset. The size of this array
+        is (number_of_unique_onsets, number_of_basis_functions),
+        and each of the rows correspond to the mean value of all
+        of the notes that occur at that onset. This array will be
+        a numpy array if `notewise_inputs` is also a numpy array,
+        or a torch.Tensor if `notewise_inputs` is a torch.Tensor.
     """
     if isinstance(notewise_inputs, np.ndarray):
         if notewise_inputs.ndim == 1:
             shape = len(unique_onset_idxs)
         else:
-            shape = (len(unique_onset_idxs), ) + notewise_inputs.shape[1:]
-        onsetwise_inputs = np.zeros(shape,
-                                    dtype=notewise_inputs.dtype)
+            shape = (len(unique_onset_idxs),) + notewise_inputs.shape[1:]
+        onsetwise_inputs = np.zeros(shape, dtype=notewise_inputs.dtype)
     elif isinstance(notewise_inputs, torch.Tensor):
-        onsetwise_inputs = torch.zeros((len(unique_onset_idxs),
-                                        notewise_inputs.shape[1]),
-                                       dtype=notewise_inputs.dtype)
+        onsetwise_inputs = torch.zeros(
+            (len(unique_onset_idxs), notewise_inputs.shape[1]),
+            dtype=notewise_inputs.dtype,
+        )
 
     for i, uix in enumerate(unique_onset_idxs):
         try:
@@ -118,15 +96,38 @@ def notewise_to_onsetwise(notewise_inputs, unique_onset_idxs):
     return onsetwise_inputs
 
 
-def onsetwise_to_notewise(onsetwise_input, unique_onset_idxs):
-    """Expand onsetwise predictions for each note
+def onsetwise_to_notewise(
+    onsetwise_input: Union[np.ndarray, torch.Tensor],
+    unique_onset_idxs: List[np.ndarray],
+) -> Union[np.ndarray, torch.Tensor]:
+    """
+    Expand onsetwise predictions for each note
+
+    Parameters
+    ----------
+    notewise_inputs : np.ndarray or torch.Tensor
+        An array of notewise inputs (basis functions). This array
+        has a shape (number_of_notes, number_of_basis_functions)
+    unique_onset_idxs: list of np.ndarray
+        A list of the indices of the unique onsets. The lenght
+        of the list is number_of_unique_onsets.
+
+    Returns
+    -------
+    onsetwise_inputs : np.ndarray or torch.Tensor
+        The inputs aggregated by onset. The size of this array
+        is (number_of_unique_onsets, number_of_basis_functions),
+        and each of the rows correspond to the mean value of all
+        of the notes that occur at that onset. This array will be
+        a numpy array if `notewise_inputs` is also a numpy array,
+        or a torch.Tensor if `notewise_inputs` is a torch.Tensor.
     """
     n_notes = sum([len(uix) for uix in unique_onset_idxs])
     if isinstance(onsetwise_input, np.ndarray):
         if onsetwise_input.ndim == 1:
             shape = n_notes
         else:
-            shape = (n_notes, ) + onsetwise_input.shape[1:]        
+            shape = (n_notes,) + onsetwise_input.shape[1:]
         notewise_inputs = np.zeros(shape, dtype=onsetwise_input.dtype)
     elif isinstance(onsetwise_input, torch.Tensor):
         notewise_inputs = torch.zeros(n_notes, dtype=onsetwise_input.dtype)
