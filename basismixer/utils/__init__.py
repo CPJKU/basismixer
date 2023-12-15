@@ -6,13 +6,15 @@ from .generic import (
     to_memmap,
     pair_files,
     clip,
-    split_datasets_by_piece)
+    split_datasets_by_piece,
+)
 
 from .music import (
     get_unique_onset_idxs,
     notewise_to_onsetwise,
     onsetwise_to_notewise,
-    load_score)
+    load_score,
+)
 
 
 from .rendering import (

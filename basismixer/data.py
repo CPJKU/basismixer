@@ -3,13 +3,14 @@
 import logging
 import os
 
+from typing import Union, Tuple, List, Iterable, Any, Dict, Optional
 import warnings
 
 import numpy as np
 import partitura.musicanalysis
 from torch.utils.data import Dataset, ConcatDataset
 
-from partitura import load_musicxml, load_match
+from partitura import load_score, load_match
 from partitura.score import expand_grace_notes
 from basismixer.utils import pair_files, get_unique_onset_idxs, notewise_to_onsetwise
 from basismixer.performance_codec import get_performance_codec
@@ -20,18 +21,22 @@ from multiprocessing import Pool
 
 LOGGER = logging.getLogger(__name__)
 
-from partitura.score import GraceNote, Note
+from partitura.score import GraceNote, Note, Part
+from partitura.utils.misc import PathLike
+
+from basismixer.performance_codec import PerformanceCodec
 
 
-def remove_grace_notes(part):
-    """Remove all grace notes from a timeline.
+def remove_grace_notes(part: Part) -> None:
+    """
+    Remove all grace notes from a Part.
 
-    The specified timeline object will be modified in place.
+    The specified Part object will be modified in place.
 
     Parameters
     ----------
-    timeline : Timeline
-        The timeline from which to remove the grace notes
+    part : Part
+        The score part from which to remove the grace notes
 
     """
     for gn in list(part.iter_all(GraceNote)):
@@ -42,25 +47,74 @@ def remove_grace_notes(part):
 
 
 def process_piece(
-    piece_performances, perf_codec, all_basis_functions, gracenotes, dataset_name
-):
+    piece_performances: Tuple[PathLike, List[PathLike]],
+    perf_codec: PerformanceCodec,
+    all_basis_functions: Iterable[str],
+    gracenotes: str = "remove",
+) -> List[Tuple[np.ndarray, List[str], np.ndarray, List[np.ndarray], str, str,]]:
+    """
+    Extract basis functions and performance parameters from a piece
+
+    Parameters
+    ----------
+    piece_performances : Tuple[PathLike, List[PathLike]]
+        A tuple containing a score filename and a list of filenames of matched
+        performances of the score (of length `n_performances`).
+    perf_codec: PerformanceCodec
+        A performance codec that represents an expressive performance.
+    all_basis_functions: List[str]
+        Name of the basis functions to be extracted from the piece
+    gracenotes: str
+        Either "expand" or "remove" grace notes. Default is remove.
+
+    Returns
+    -------
+    data: List[Tuple[np.ndarray, List[str], np.ndarray, List[np.ndarray], str, str]]
+        A list of length `n_performances` which contains the extracted information
+        for each performance. The list includes the following information:
+        * basis_matched (np.ndarray): The extracted score features (basis functions)
+          for each note in the score.
+        * bf_names (List[str]): A list of the names of the extracted basis functions.
+          The basis functions are a subset of `all_basis_functions`, but omit all
+          functions that do not appear in the score (e.g., it does not extract a function)
+          for the dynamics marking ff if none appears in the score.
+        * targets (np.ndarray): The expressive parameters, as defined in the performance
+          codec. Each row correspond to the parameters for a note and the number of columns
+          depends on the `performance_codec`.
+        * unique_onset_idx (List[np.ndarray]): A list of the indices of the unique score
+          onset times.
+        * name (str): The name of the score.
+        * performance_name (str): The name of the performance.
+    """
+
+    if gracenotes not in ("expand", "remove"):
+        raise ValueError(
+            f"`gracenotes` should be 'expand' or 'remove' but is {gracenotes}"
+        )
+
     piece, performances = piece_performances
     data = []
-    quirks = False
-    if dataset_name == "asap":
-        name = "/".join(str(piece).split("asap")[1].split("/")[1:-1])
-    else:
-        name = piece.split("/")[-1].split(".")[0]
-        # quirks = True
+
+    name = os.path.splitext(os.path.basename(piece))[0]
 
     LOGGER.info("Processing {}".format(piece))
 
-    part = load_musicxml(piece)
-    part = partitura.score.merge_parts(part)
-    part = partitura.score.unfold_part_maximal(part, update_ids=dataset_name != "4x22")
-    bm = part.beat_map
+    score = load_score(piece)
+
+    if len(score) > 1:
+        # Assume that the piece has only one part
+        # TODO: Handle multiple parts (issues to address: unfolding parts
+        #  and getting repetition structure from alignment)
+        LOGGER.warning(
+            f"Score {piece} consists of {len(score)} parts. "
+            "Only the first one will be used."
+        )
+
+    part = score[0]
 
     # get indices of the unique onsets
+    # TODO: move this part below (after unfolding) if allowing for expanding
+    # ornaments as well.
     if gracenotes == "remove":
         # Remove grace notes
         remove_grace_notes(part)
@@ -68,31 +122,37 @@ def process_piece(
         # expand grace note durations (necessary for correct computation of
         # targets)
         expand_grace_notes(part)
-    basis, bf_names = partitura.musicanalysis.make_note_feats(
-        part, list(all_basis_functions)
-    )
-
-    nid_dict = dict((n.id, i) for i, n in enumerate(part.notes_tied))
 
     for performance in performances:
-        if dataset_name == "asap":
-            alignment = load_alignment_from_ASAP(performance)
-            ppart = partitura.load_performance_midi(
-                str(performance).split("_note_alignments/")[0] + ".mid"
+        perf_ext = os.path.splitext(performance)[-1]
+
+        if perf_ext == ".match":
+            perf, alignment = load_match(
+                performance,
+                pedal_threshold=127,
+                first_note_at_zero=True,
             )
-        else:
-            ppart, alignment = load_match(performance, first_note_at_zero=True)
 
-            # if quirks: todo: check if quirks are really needed
-            #    for n in alignment:
-            #        if n['label'] == 'match':
-            #            n['score_id'] = n['score_id'].split('-')[0]
+        # Update this part whenever multi-part scores
+        # are supported (see point above)
+        ppart = perf[0]
 
-        assert len(ppart.performedparts) == 1
-        ppart = ppart.performedparts[0]
+        # TODO: check if part is not modified with unfolding
+        spart = partitura.score.unfold_part_alignment(
+            part=part,
+            alignment=alignment,
+        )
+
+        basis, bf_names = partitura.musicanalysis.make_note_feats(
+            spart, list(all_basis_functions)
+        )
+
+        nid_dict = dict((n.id, i) for i, n in enumerate(spart.notes_tied))
+
+        bm = spart.beat_map
 
         # compute the targets
-        targets, snote_ids = perf_codec.encode(part, ppart, alignment)
+        targets, snote_ids = perf_codec.encode(spart, ppart, alignment)
 
         matched_subset_idxs = np.array([nid_dict[nid] for nid in snote_ids])
         basis_matched = basis[matched_subset_idxs]
@@ -116,11 +176,16 @@ def process_piece(
     return data
 
 
-class ProcessPiece:
-    def __init__(self, args):
+class ProcessPiece(object):
+    def __init__(self, args: Dict[str, Any]) -> None:
         self.args = args
 
-    def __call__(self, piece):
+    def __call__(
+        self, piece
+    ) -> List[Tuple[np.ndarray, List[str], np.ndarray, List[np.ndarray], str, str,]]:
+        """
+        See `process_piece`.
+        """
         return process_piece(piece, *self.args)
 
 
@@ -147,9 +212,9 @@ def make_datasets(
     gracenotes="remove",
     valid_pieces=None,
 ):
-    assert dataset_name in ["4x22", "magaloff", "asap"]
+    # assert dataset_name in ["4x22", "magaloff", "asap"]
 
-    quirks = dataset_name == "magaloff"
+    # quirks = dataset_name == "magaloff"
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -193,7 +258,6 @@ def make_datasets(
             if valid_pieces is None:
                 valid_pieces = np.array(list(paired_files.keys()))
             for pf in paired_files.items():
-
                 if pf[0] not in valid_pieces:
                     print(f"{pf[0]} is not in valid_pieces")
                     continue
@@ -356,16 +420,24 @@ class BasisMixerDataSet(Dataset):
 
     """
 
+    basis: np.ndarray
+    idx: np.ndarray
+    n_basis : int
+    targets: np.ndarray
+    seq_len: int
+    name: Optional[str]
+    perf_name: Optional[str]
+
     def __init__(
         self,
-        basis,
-        idx,
-        n_basis,
-        targets,
-        seq_len=1,
-        name=None,
-        perf_name=None,
-    ):
+        basis: np.ndarray,
+        idx: np.ndarray,
+        n_basis: int,
+        targets: np.ndarray,
+        seq_len: int=1,
+        name: Optional[str]=None,
+        perf_name: Optional[str]=None,
+    ) -> None:
         self.basis = basis.astype(np.float32)
         self.idx = idx
         self.n_basis = n_basis
@@ -375,16 +447,16 @@ class BasisMixerDataSet(Dataset):
         self.perf_name = perf_name
 
     @property
-    def piecewise(self):
+    def piecewise(self) -> bool:
         return self.seq_len == -1
 
-    def __getitem__(self, i):
+    def __getitem__(self, i: int) -> Tuple[np.ndarray, np.ndarray]:
         if self.piecewise:
             return self._get_item_piecewise(i)
         else:
             return self._get_item_sequencewise(i)
 
-    def _get_item_piecewise(self, i):
+    def _get_item_piecewise(self, i: int) -> Tuple[np.ndarray, np.ndarray]:
         if i > 0:
             raise IndexError
         x = np.zeros((len(self.basis), self.n_basis))
@@ -392,7 +464,7 @@ class BasisMixerDataSet(Dataset):
 
         return x, self.targets
 
-    def _get_item_sequencewise(self, i):
+    def _get_item_sequencewise(self, i: int) -> Tuple[np.ndarray, np.ndarray]:
         if i + self.seq_len > len(self.basis):
             raise IndexError
 
@@ -403,7 +475,7 @@ class BasisMixerDataSet(Dataset):
 
         return x, y
 
-    def __len__(self):
+    def __len__(self) -> int:
         if self.piecewise:
             return 1
         else:

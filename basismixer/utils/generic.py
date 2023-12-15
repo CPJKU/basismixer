@@ -8,27 +8,62 @@ from collections import defaultdict
 import numpy as np
 from torch.utils.data import ConcatDataset
 
-
-def load_pyc_bz(fn):
-    return pickle.load(bz2.BZ2File(fn, 'r'))
-
-
-def save_pyc_bz(d, fn):
-    pickle.dump(d, bz2.BZ2File(fn, 'w'), pickle.HIGHEST_PROTOCOL)
+from os import PathLike
+from typing import Any, Dict, Optional
 
 
-def to_memmap(a, folder=None):
+def load_pyc_bz(fn: PathLike) -> Any:
+    """
+    Load a compressed pickle file
+
+    Parameters
+    ----------
+    fn : PathLike
+       The compressed pickle file
+
+    Returns
+    -------
+    obj: Any
+        The object contained in the pickle file.
+    """
+    obj = pickle.load(bz2.BZ2File(fn, "r"))
+    return obj
+
+
+def save_pyc_bz(d: Any, fn: PathLike) -> None:
+    """
+    Save an object as a compressed pickle file
+
+    Parameters
+    ----------
+    d : Any
+        An object to pickle
+    fn: PathLike
+        File to store the compressed pickle file
+    """
+    pickle.dump(d, bz2.BZ2File(fn, "w"), pickle.HIGHEST_PROTOCOL)
+
+
+def to_memmap(
+    a: np.ndarray,
+    folder: Optional[PathLike] = None,
+) -> np.ndarray:
+    """ """
 
     if folder:
         os.makedirs(folder, exist_ok=True)
 
-    f = tempfile.NamedTemporaryFile(suffix='.npy', dir=folder)
+    f = tempfile.NamedTemporaryFile(suffix=".npy", dir=folder)
     np.save(f.name, a)
-    a_memmap = np.load(f.name, mmap_mode='r')
+    a_memmap = np.load(f.name, mmap_mode="r")
     return a_memmap
 
 
-def pair_files(folder_dict, full_path=True, by_prefix=True):
+def pair_files(
+    folder_dict: Dict,
+    full_path: bool = True,
+    by_prefix: bool = True,
+) -> Dict:
     """Pair files in different directories by their filenames.
 
     The function returns a dictionary where the keys are the matched
@@ -56,7 +91,6 @@ def pair_files(folder_dict, full_path=True, by_prefix=True):
     -------
     dict
         A dictionary with the paired files..
-
     """
     result = defaultdict(lambda: defaultdict(set))
 
@@ -95,15 +129,14 @@ def pair_files(folder_dict, full_path=True, by_prefix=True):
 
     # remove_incomplete items
     labels = set(folder_dict.keys())
-    todo_delete = [k for k, k_labels in result.items()
-                   if not set(k_labels) == labels]
+    todo_delete = [k for k, k_labels in result.items() if not set(k_labels) == labels]
     for k in todo_delete:
         del result[k]
 
     return result
 
 
-def clip(v, low=0, high=127):
+def clip(v: np.ndarray, low: float = 0, high: float = 127) -> None:
     """Clip values in `v` to the range `[low, high]`. The array is
     modified in-place.
 
@@ -117,29 +150,21 @@ def clip(v, low=0, high=127):
         High bound. Defaults to 127.
 
     """
-    too_low = np.where(v < low)[0]
-
-    if len(too_low) > 0:
-        # LOGGER.warning('Clipping {} low values'.format(too_low))
-        v[too_low] = low
-
-    too_high = np.where(v > high)[0]
-
-    if len(too_high) > 0:
-        # LOGGER.warning('Clipping {} high values'.format(too_high))
-        v[too_high] = high
+    np.clip(a=v, a_min=low, a_max=high, out=v)
 
 
-def split_datasets_by_piece(datasets, fold=0, folds=5, dataset_name='magaloff'):
+def split_datasets_by_piece(datasets, fold=0, folds=5, dataset_name="magaloff"):
     from partitura.utils import partition
     from pandas_ods_reader import read_ods
 
-    if dataset_name == 'asap':
+    if dataset_name == "asap":
         # This does not seem to work...
         ods = read_ods("../basismixer/assets/perfwise_insertions_deletions.ods")
 
         relevant = ods.values[:, :2]
-        robust = [r[0].split('asap-dataset\\')[1] for r in relevant if r[1] in ['c']]  # , 'c + highs', 'c + ornaments'
+        robust = [
+            r[0].split("asap-dataset\\")[1] for r in relevant if r[1] in ["c"]
+        ]  # , 'c + highs', 'c + ornaments'
 
         robust_performances = []
         for d in datasets:
@@ -154,14 +179,15 @@ def split_datasets_by_piece(datasets, fold=0, folds=5, dataset_name='magaloff'):
     RNG = np.random.RandomState(1984)
     RNG.shuffle(pieces)
 
-
     test_size = 1 / folds
-    n_test = max(1, int(np.round(test_size*len(pieces))))
+    n_test = max(1, int(np.round(test_size * len(pieces))))
     n_train = len(pieces) - n_test
 
     if n_train < 1:
-        raise Exception('Not enough pieces to split datasets according '
-                        'to the specified test/validation proportions')
+        raise Exception(
+            "Not enough pieces to split datasets according "
+            "to the specified test/validation proportions"
+        )
 
     test_start = n_test * fold
     test_end = n_test * (1 + fold)
@@ -171,5 +197,4 @@ def split_datasets_by_piece(datasets, fold=0, folds=5, dataset_name='magaloff'):
     test_set = [d for pd in [by_piece[p] for p in test_pieces] for d in pd]
     train_set = [d for pd in [by_piece[p] for p in train_pieces] for d in pd]
 
-    return (ConcatDataset(train_set),
-            ConcatDataset(test_set))
+    return (ConcatDataset(train_set), ConcatDataset(test_set))

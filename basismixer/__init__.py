@@ -17,13 +17,24 @@ from basismixer.data import make_datasets
 __version__ = pkg_resources.get_distribution("basismixer").version
 
 # An example basis configuration for didactic purposes
-BASIS_CONFIG_EXAMPLE = pkg_resources.resource_filename("basismixer", 'assets/basis_config_example.json')
+BASIS_CONFIG_EXAMPLE = pkg_resources.resource_filename(
+    "basismixer",
+    "assets/basis_config_example.json",
+)
 
-MODEL_CONFIG_EXAMPLE = pkg_resources.resource_filename("basismixer", 'assets/model_config_example.json')
+MODEL_CONFIG_EXAMPLE = pkg_resources.resource_filename(
+    "basismixer",
+    "assets/model_config_example.json",
+)
 
 # A small trained model for didactic purposes
-TRAINED_MODEL_CONFIG_EXAMPLE = pkg_resources.resource_filename("basismixer", 'assets/sample_models/vienna_4x22_velocity_trend-beat_period_standardized-onsetwise/config.json')
-TRAINED_MODEL_PARAMS_EXAMPLE = pkg_resources.resource_filename("basismixer", 'assets/sample_models/vienna_4x22_velocity_trend-beat_period_standardized-onsetwise/model_params.pth')
+TRAINED_MODEL_CONFIG_EXAMPLE = pkg_resources.resource_filename(
+    "basismixer",
+    "assets/sample_models/vienna_4x22_velocity_trend-beat_period_standardized-onsetwise/config.json",
+)
+TRAINED_MODEL_PARAMS_EXAMPLE = pkg_resources.resource_filename(
+    "basismixer",
+    "assets/sample_models/vienna_4x22_velocity_trend-beat_period_standardized-onsetwise/model_params.pth",
+)
 
-TOY_MODEL_CONFIG = [[TRAINED_MODEL_CONFIG_EXAMPLE,
-                     TRAINED_MODEL_PARAMS_EXAMPLE]]
+TOY_MODEL_CONFIG = [[TRAINED_MODEL_CONFIG_EXAMPLE, TRAINED_MODEL_PARAMS_EXAMPLE]]

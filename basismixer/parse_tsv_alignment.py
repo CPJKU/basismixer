@@ -17,10 +17,12 @@ def alignment_dicts_to_array(alignment):
     alignarray : structured ndarray
         Structured array containing note alignment.
     """
-    fields = [('idx', 'i4'),
-              ('matchtype', 'U256'),
-              ('partid', 'U256'),
-              ('ppartid', 'U256')]
+    fields = [
+        ("idx", "i4"),
+        ("matchtype", "U256"),
+        ("partid", "U256"),
+        ("ppartid", "U256"),
+    ]
 
     array = []
     # for all dicts create an appropriate entry in an array:
@@ -37,8 +39,7 @@ def alignment_dicts_to_array(alignment):
     return alignarray
 
 
-def save_csv_for_parangonada(outdir, part, ppart, align,
-                             zalign=None, feature=None):
+def save_csv_for_parangonada(outdir, part, ppart, align, zalign=None, feature=None):
     """
     Save an alignment for visualization with parangonda.
 
@@ -62,18 +63,26 @@ def save_csv_for_parangonada(outdir, part, ppart, align,
     part = ensure_notearray(part)
     ppart = ensure_notearray(ppart)
 
-    ffields = [('velocity', '<f4'),
-               ('timing', '<f4'),
-               ('articulation', '<f4'),
-               ('id', 'U256')]
+    ffields = [
+        ("velocity", "<f4"),
+        ("timing", "<f4"),
+        ("articulation", "<f4"),
+        ("id", "U256"),
+    ]
 
     farray = []
     notes = list(part["id"])
     if feature is not None:
         # veloctiy, timing, articulation, note
-        for no, i in enumerate(list(feature['id'])):
-            farray.append((feature['velocity'][no], feature['timing'][no],
-                           feature['articulation'][no], i))
+        for no, i in enumerate(list(feature["id"])):
+            farray.append(
+                (
+                    feature["velocity"][no],
+                    feature["timing"][no],
+                    feature["articulation"][no],
+                    i,
+                )
+            )
     else:
         for no, i in enumerate(notes):
             farray.append((0, 0, 0, i))
@@ -86,16 +95,46 @@ def save_csv_for_parangonada(outdir, part, ppart, align,
     else:  # if no zalign is available, save the same alignment twice
         zalignarray = alignment_dicts_to_array(align)
 
-    np.savetxt(outdir + os.path.sep + "Nppart.csv", ppart,
-               fmt="%.20s", delimiter=",", header=",".join(ppart.dtype.names), comments="")
-    np.savetxt(outdir + os.path.sep + "Npart.csv", part,
-               fmt="%.20s", delimiter=",", header=",".join(part.dtype.names), comments="")
-    np.savetxt(outdir + os.path.sep + "Nalign.csv", alignarray,
-               fmt="%.20s", delimiter=",", header=",".join(alignarray.dtype.names), comments="")
-    np.savetxt(outdir + os.path.sep + "Nzalign.csv", zalignarray,
-               fmt="%.20s", delimiter=",", header=",".join(zalignarray.dtype.names), comments="")
-    np.savetxt(outdir + os.path.sep + "Nfeature.csv", featurearray,
-               fmt="%.20s", delimiter=",", header=",".join(featurearray.dtype.names), comments="")
+    np.savetxt(
+        outdir + os.path.sep + "Nppart.csv",
+        ppart,
+        fmt="%.20s",
+        delimiter=",",
+        header=",".join(ppart.dtype.names),
+        comments="",
+    )
+    np.savetxt(
+        outdir + os.path.sep + "Npart.csv",
+        part,
+        fmt="%.20s",
+        delimiter=",",
+        header=",".join(part.dtype.names),
+        comments="",
+    )
+    np.savetxt(
+        outdir + os.path.sep + "Nalign.csv",
+        alignarray,
+        fmt="%.20s",
+        delimiter=",",
+        header=",".join(alignarray.dtype.names),
+        comments="",
+    )
+    np.savetxt(
+        outdir + os.path.sep + "Nzalign.csv",
+        zalignarray,
+        fmt="%.20s",
+        delimiter=",",
+        header=",".join(zalignarray.dtype.names),
+        comments="",
+    )
+    np.savetxt(
+        outdir + os.path.sep + "Nfeature.csv",
+        featurearray,
+        fmt="%.20s",
+        delimiter=",",
+        header=",".join(featurearray.dtype.names),
+        comments="",
+    )
 
 
 def load_alignment_from_parangonada(outfile):
@@ -117,7 +156,13 @@ def load_alignment_from_parangonada(outfile):
     # match = 0, deletion  = 1, insertion = 2
     for k in range(1, array.shape[0]):
         if array[k, 1] == 0:
-            alignlist.append({"label": "match", "score_id": array[k, 2], "performance_id": array[k, 3]})
+            alignlist.append(
+                {
+                    "label": "match",
+                    "score_id": array[k, 2],
+                    "performance_id": array[k, 3],
+                }
+            )
 
         elif array[k, 1] == 2:
             alignlist.append({"label": "insertion", "performance_id": array[k, 3]})
@@ -141,26 +186,30 @@ def save_tsv_for_ASAP(outfile, ppart, alignment):
         A list of note alignment dictionaries.
 
     """
-    notes_indexed_by_id = {str(n["id"]): [str(n["id"]),
-                                          str(n["track"]),
-                                          str(n["channel"]),
-                                          str(n["midi_pitch"]),
-                                          str(n["note_on"])]
-                           for n in ppart.notes}
-    with open(outfile, 'w') as f:
-        f.write('xml_id\tmidi_id\ttrack\tchannel\tpitch\tonset\n')
+    notes_indexed_by_id = {
+        str(n["id"]): [
+            str(n["id"]),
+            str(n["track"]),
+            str(n["channel"]),
+            str(n["midi_pitch"]),
+            str(n["note_on"]),
+        ]
+        for n in ppart.notes
+    }
+    with open(outfile, "w") as f:
+        f.write("xml_id\tmidi_id\ttrack\tchannel\tpitch\tonset\n")
         for line in alignment:
             if line["label"] == "match":
                 outline_score = [str(line["score_id"])]
                 outline_perf = notes_indexed_by_id[str(line["performance_id"])]
-                f.write('\t'.join(outline_score + outline_perf) + '\n')
+                f.write("\t".join(outline_score + outline_perf) + "\n")
             elif line["label"] == "deletion":
                 outline_score = str(line["score_id"])
-                f.write(outline_score + '\tdeletion\n')
+                f.write(outline_score + "\tdeletion\n")
             elif line["label"] == "insertion":
                 outline_score = ["insertion"]
                 outline_perf = notes_indexed_by_id[str(line["performance_id"])]
-                f.write('\t'.join(outline_score + outline_perf) + '\n')
+                f.write("\t".join(outline_score + outline_perf) + "\n")
 
 
 def load_alignment_from_ASAP(file):
@@ -178,16 +227,20 @@ def load_alignment_from_ASAP(file):
         A list of note alignment dictionaries.
     """
     alignlist = list()
-    with open(file, 'r') as f:
+    with open(file, "r") as f:
         for line in f.readlines()[1:]:  # skip header
             fields = line.split("\t")
             if fields[0][0] == "n" and not fields[1].startswith("deletion"):
-                field0 = fields[0]#.split("-")[0] # todo: how to handle 'n123-x' when x > 1, all quirk?
-                alignlist.append({"label": "match", "score_id": field0, "performance_id": fields[1]})
+                field0 = fields[
+                    0
+                ]  # .split("-")[0] # todo: how to handle 'n123-x' when x > 1, all quirk?
+                alignlist.append(
+                    {"label": "match", "score_id": field0, "performance_id": fields[1]}
+                )
             elif fields[0] == "insertion":
                 alignlist.append({"label": "insertion", "performance_id": fields[1]})
             elif fields[0][0] == "n" and fields[1].startswith("deletion"):
-                field0 = fields[0]#.split("-")[0]
+                field0 = fields[0]  # .split("-")[0]
                 alignlist.append({"label": "deletion", "score_id": field0})
             else:
                 raise Exception(f"Unknown alignment type: {fields[0]}")
