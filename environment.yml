@@ -6,19 +6,19 @@ channels:
 
 dependencies:
   - python=3.9
-  - pytorch
-  - torchvision
-  - torchaudio
-  - numpy
-  - scipy
-  - matplotlib
-  - ipython
-  - jupyter
+  - pytorch=2.0.1
+  - torchvision=0.13.1
+  - torchaudio=2.0.2
+  - numpy=1.24.3
+  - scipy=1.10.1
+  - matplotlib=3.7.1
+  - ipython=8.12.0
+  - jupyter=1.0.0
+  - tqdm=4.65.0
   - pip
-  - tqdm
 
   - pip:
-    - appdirs
-    - soundfile
-    - partitura
-    - pandas_ods_reader
+    - appdirs==1.4.4
+    - soundfile==0.12.1
+    - partitura==1.4.1
+    - pandas_ods_reader==0.1.4

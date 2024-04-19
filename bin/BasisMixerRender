@@ -227,6 +227,7 @@ if __name__ == "__main__":
         "--model-config",
         "-c",
         help="JSON file specifying the configuration and parameters of the model",
+        default=None,
     )
     parser.add_argument(
         "--default-values",

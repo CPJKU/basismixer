@@ -1,0 +1,47 @@
+{
+  "constructor": [
+    "basismixer.predictive_models",
+    "RecurrentModel"
+  ],
+  "args": {
+    "recurrent_size": 128,
+    "n_layers": 1,
+    "hidden_size": 64,
+    "input_names": [
+      "polynomial_pitch_feature.pitch",
+      "duration_feature.duration",
+      "fermata_feature.fermata",
+      "metrical_strength_feature.beat_phase",
+      "metrical_strength_feature.metrical_strength_downbeat",
+      "metrical_strength_feature.metrical_strength_secondary",
+      "metrical_strength_feature.metrical_strength_weak",
+      "time_signature_feature.time_signature_num_1",
+      "time_signature_feature.time_signature_num_2",
+      "time_signature_feature.time_signature_num_3",
+      "time_signature_feature.time_signature_num_4",
+      "time_signature_feature.time_signature_num_5",
+      "time_signature_feature.time_signature_num_6",
+      "time_signature_feature.time_signature_num_7",
+      "time_signature_feature.time_signature_num_8",
+      "time_signature_feature.time_signature_num_9",
+      "time_signature_feature.time_signature_num_10",
+      "time_signature_feature.time_signature_num_11",
+      "time_signature_feature.time_signature_num_12",
+      "time_signature_feature.time_signature_num_other",
+      "time_signature_feature.time_signature_den_1",
+      "time_signature_feature.time_signature_den_2",
+      "time_signature_feature.time_signature_den_4",
+      "time_signature_feature.time_signature_den_8",
+      "time_signature_feature.time_signature_den_16",
+      "time_signature_feature.time_signature_den_other",
+      "relative_score_position_feature.score_position"
+    ],
+    "input_size": 27,
+    "output_names": [
+      "velocity_trend",
+      "beat_period_ratio_log"
+    ],
+    "output_size": 2,
+    "input_type": "onsetwise"
+  }
+}

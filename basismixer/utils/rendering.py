@@ -139,7 +139,7 @@ def sanitize_performed_part(
         for i, note in enumerate(pitch_messages[pitch][1:]):
 
             pitch_messages[pitch][i]["note_off"] = min(
-                note["note_on"] - eps,
+                note["note_on"] + eps,
                 pitch_messages[pitch][i]["note_off"],
             )
 

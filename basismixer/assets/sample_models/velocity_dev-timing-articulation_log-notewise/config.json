@@ -1,0 +1,62 @@
+{
+  "constructor": [
+    "basismixer.predictive_models",
+    "FeedForwardModel"
+  ],
+  "args": {
+    "hidden_size": 128,
+    "input_names": [
+      "polynomial_pitch_feature.pitch",
+      "articulation_feature.accent",
+      "articulation_feature.strong-accent",
+      "articulation_feature.staccato",
+      "articulation_feature.tenuto",
+      "articulation_feature.detached-legato",
+      "articulation_feature.staccatissimo",
+      "articulation_feature.spiccato",
+      "articulation_feature.scoop",
+      "articulation_feature.plop",
+      "articulation_feature.doit",
+      "articulation_feature.falloff",
+      "articulation_feature.breath-mark",
+      "articulation_feature.caesura",
+      "articulation_feature.stress",
+      "articulation_feature.unstress",
+      "articulation_feature.soft-accent",
+      "duration_feature.duration",
+      "fermata_feature.fermata",
+      "metrical_strength_feature.beat_phase",
+      "metrical_strength_feature.metrical_strength_downbeat",
+      "metrical_strength_feature.metrical_strength_secondary",
+      "metrical_strength_feature.metrical_strength_weak",
+      "time_signature_feature.time_signature_num_1",
+      "time_signature_feature.time_signature_num_2",
+      "time_signature_feature.time_signature_num_3",
+      "time_signature_feature.time_signature_num_4",
+      "time_signature_feature.time_signature_num_5",
+      "time_signature_feature.time_signature_num_6",
+      "time_signature_feature.time_signature_num_7",
+      "time_signature_feature.time_signature_num_8",
+      "time_signature_feature.time_signature_num_9",
+      "time_signature_feature.time_signature_num_10",
+      "time_signature_feature.time_signature_num_11",
+      "time_signature_feature.time_signature_num_12",
+      "time_signature_feature.time_signature_num_other",
+      "time_signature_feature.time_signature_den_1",
+      "time_signature_feature.time_signature_den_2",
+      "time_signature_feature.time_signature_den_4",
+      "time_signature_feature.time_signature_den_8",
+      "time_signature_feature.time_signature_den_16",
+      "time_signature_feature.time_signature_den_other",
+      "relative_score_position_feature.score_position"
+    ],
+    "input_size": 43,
+    "output_names": [
+      "velocity_dev",
+      "timing",
+      "articulation_log"
+    ],
+    "output_size": 3,
+    "input_type": "notewise"
+  }
+}

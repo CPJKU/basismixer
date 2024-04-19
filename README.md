@@ -5,28 +5,22 @@ The basic idea in this framework is that structural properties of a musical piec
 
 ## Setup
 
-The easiest way to install the basismixer package is with pip.
+We include a [Conda](https://docs.conda.io/en/latest/miniconda.html) environment for setting all of the dependencies of the package. The easiest way to install the basismixer package is with pip.
 
 ```bash
-git clone https://github.com/OFAI/basismixer.git
-pip install ./basismixer
-```
-
-Optionally, we include a [Conda](https://docs.conda.io/en/latest/miniconda.html) environment for setting all of the dependencies of the package.
-
-```bash
-git clone https://github.com/OFAI/basismixer.git
+git clone https://github.com/CPJKU/basismixer.git
 cd basismixer
 conda env create -f environment.yml
+pip install .
 ```
-	
-
 
 ## Usage
 
 Here is a quick guide for using this package. 
 
 ### Tutorial
+
+**The tutorial is using an old version of the code, in particular, an old version of Partitura!**
 
 We prepared a collection of Jupyter notebooks demonstrating this package, which can be found [here](https://github.com/mgrachten/basismixer-notebooks). These notebooks were presented during the tutorial [*Computational Modeling of Musical Expression: Perspectives, Datasets, Analysis and Generation*](https://ismir2019.ewi.tudelft.nl/?q=node/39) presented at the ISMIR 2019 conference in Delft, the Netherlands. You can test these notebooks [online](https://mybinder.org/v2/gh/mgrachten/basismixer-notebooks/master).
 
@@ -43,17 +37,17 @@ To generate an expressive performance
 
 ```bash
 cd path/to/basismixer
-./bin/render_piece [OPTIONS] score_file midi_file.mid
+./bin/BasisMixerRender [OPTIONS] score_file midi_file.mid
 ```
 
 The score (`score_file`) can be in one of the formats supported by the [partitura package](https://partitura.readthedocs.io/en/latest/). 
 
-This repository includes a small model trained on the Vienna 4x22 dataset. This model was prepared for the tutorial on Computational Models of Expressive Performance presented at the ISMIR 2019. **This is a demonstration model and is not intended to represent the state-of-the-art.**
+This repository includes a small model trained on the Magaloff dataset. **This is a demonstration model and is not intended to represent the state-of-the-art.**
 
 For more help see
 
 ```bash
-./bin/render_piece -h
+./bin/BasisMixerRender -h
 ```
 
 ### Training a Model

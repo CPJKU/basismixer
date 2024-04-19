@@ -1,0 +1,80 @@
+[
+  {
+    "onsetwise": false,
+    "basis_functions": [
+      "polynomial_pitch_feature",
+      "articulation_feature",
+      "duration_feature",
+      "fermata_feature",
+      "metrical_strength_feature",
+      "time_signature_feature",
+      "relative_score_position_feature"
+    ],
+    "parameter_names": [
+      "velocity_dev",
+      "timing",
+      "articulation_log"
+    ],
+    "seq_len": 1,
+    "model": {
+      "constructor": [
+        "basismixer.predictive_models",
+        "FeedForwardModel"
+      ],
+      "args": {
+        "hidden_size": 128
+      }
+    },
+    "train_args": {
+      "optimizer": [
+        "Adam",
+        {
+          "lr": 0.0001
+        }
+      ],
+      "epochs": 1000,
+      "save_freq": 10,
+      "early_stopping": 100,
+      "batch_size": 1000
+    }
+  },
+  {
+    "onsetwise": true,
+    "basis_functions": [
+      "polynomial_pitch_feature",
+      "duration_feature",
+      "fermata_feature",
+      "metrical_strength_feature",
+      "time_signature_feature",
+      "relative_score_position_feature"
+    ],
+    "parameter_names": [
+      "velocity_trend",
+      "beat_period_ratio_log"
+    ],
+    "seq_len": 100,
+    "model": {
+      "constructor": [
+        "basismixer.predictive_models",
+        "RecurrentModel"
+      ],
+      "args": {
+        "recurrent_size": 128,
+        "n_layers": 1,
+        "hidden_size": 64
+      }
+    },
+    "train_args": {
+      "optimizer": [
+        "Adam",
+        {
+          "lr": 0.0001
+        }
+      ],
+      "epochs": 10,
+      "save_freq": 5,
+      "early_stopping": 100,
+      "batch_size": 50
+    }
+  }
+]
